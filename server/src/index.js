@@ -7,6 +7,7 @@ import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import authRouter, { requireAuth } from "./auth.js";
 
 dotenv.config();
 
@@ -20,6 +21,7 @@ app.use(helmet());
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 app.use(morgan("dev"));
+app.use("/api", authRouter);
 
 // Simple admin token middleware
 const requireAdmin = (req, res, next) => {
@@ -199,6 +201,11 @@ app.post("/api/restore", requireAdmin, async (req, res) => {
 
 // Health
 app.get("/api/health", (req, res) => res.json({ ok: true }));
+
+// Example protected route with role check
+app.get("/api/admin/ping", requireAuth(["admin"]), (req, res) => {
+  res.json({ ok: true, by: req.user });
+});
 
 app.listen(PORT, () => {
   console.log(`Backup server listening on http://localhost:${PORT}`);
