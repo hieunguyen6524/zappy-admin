@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect } from "react";
 import {
   LayoutDashboard,
@@ -21,11 +22,12 @@ import {
   Phone,
   Video,
   Clock,
-  Eye,
   Download,
   RefreshCw,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useAuth } from "@/context/AuthContext";
+import { logout } from "@/services/auth";
 import { supabase } from "@/services/supabase";
 
 type TabType =
@@ -80,6 +82,7 @@ interface SystemStats {
 }
 
 const AdminDashboard: React.FC = () => {
+  const { user, reload } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>("overview");
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [usersSearchQuery, setUsersSearchQuery] = useState("");
@@ -143,29 +146,6 @@ const AdminDashboard: React.FC = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
-
-  const posts: Post[] = [
-    {
-      id: "1",
-      author_id: "1",
-      author_name: "John Doe",
-      content: "Check out this amazing feature we just launched!",
-      created_at: "2024-10-30T10:00:00Z",
-      likes_count: 245,
-      comments_count: 32,
-      is_reported: false,
-    },
-    {
-      id: "2",
-      author_id: "2",
-      author_name: "Jane Smith",
-      content: "This is inappropriate content that was reported",
-      created_at: "2024-10-29T15:30:00Z",
-      likes_count: 12,
-      comments_count: 5,
-      is_reported: true,
-    },
-  ];
 
   const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
@@ -773,7 +753,7 @@ const AdminDashboard: React.FC = () => {
               .eq("conversation_id", conv.id)
               .order("created_at", { ascending: false })
               .limit(1)
-              .single();
+              .maybeSingle();
 
             return {
               id: conv.id,
@@ -1036,112 +1016,351 @@ const AdminDashboard: React.FC = () => {
     );
   };
 
-  const PostsTab: React.FC = () => (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2
-          className={`text-2xl font-bold ${
-            isDarkMode ? "text-white" : "text-gray-900"
-          }`}
-        >
-          Quản lý bài đăng
-        </h2>
-      </div>
+  const PostsTab: React.FC = () => {
+    const [search, setSearch] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [users, setUsers] = useState<
+      Array<{ id: string; display_name: string; username: string }>
+    >([]);
+    const [items, setItems] = useState<
+      Array<{
+        id: string;
+        author_id: string;
+        author_name: string;
+        author_username: string;
+        content: string;
+        image_url: string | null;
+        created_at: string;
+        updated_at: string | null;
+        comments_count: number;
+        reactions_count: number;
+      }>
+    >([]);
 
-      <div className="grid grid-cols-1 gap-6">
-        {posts.map((post) => (
-          <div
-            key={post.id}
-            className={`${
-              isDarkMode ? "bg-gray-800" : "bg-white"
-            } rounded-lg p-6 shadow-lg border ${
-              isDarkMode ? "border-gray-700" : "border-gray-200"
+    const loadUsers = async () => {
+      try {
+        const { data, error: err } = await supabase
+          .from("profiles")
+          .select("id, display_name, username")
+          .limit(100);
+        if (err) throw err;
+        setUsers(
+          (data || []) as Array<{
+            id: string;
+            display_name: string;
+            username: string;
+          }>
+        );
+      } catch (e) {
+        console.error("Error loading users:", e);
+      }
+    };
+
+    const loadPosts = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Query posts đơn giản trước
+        let query = supabase
+          .from("posts")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(100);
+
+        if (search) {
+          query = query.ilike("content", `%${search}%`);
+        }
+
+        const { data: postsData, error: err } = await query;
+
+        if (err) {
+          console.error("Error loading posts:", err);
+          throw err;
+        }
+
+        console.log("Posts data:", postsData);
+
+        const rows = (postsData || []) as Array<any>;
+
+        if (rows.length === 0) {
+          setItems([]);
+          setLoading(false);
+          return;
+        }
+
+        // Lấy danh sách author_ids unique
+        const authorIds = [...new Set(rows.map((r) => r.author_id))];
+
+        // Load tất cả authors một lần
+        const { data: authorsData } = await supabase
+          .from("profiles")
+          .select("id, display_name, username")
+          .in("id", authorIds);
+
+        const authorsMap = new Map(
+          (authorsData || []).map((a: any) => [a.id, a])
+        );
+
+        // Load counts cho từng post
+        const withCounts = await Promise.all(
+          rows.map(async (r) => {
+            const author = authorsMap.get(r.author_id);
+
+            const [{ count: commentsCount }, { count: reactionsCount }] =
+              await Promise.all([
+                supabase
+                  .from("post_comments")
+                  .select("*", { count: "exact", head: true })
+                  .eq("post_id", r.id),
+                supabase
+                  .from("post_reactions")
+                  .select("*", { count: "exact", head: true })
+                  .eq("post_id", r.id),
+              ]);
+
+            return {
+              id: r.id,
+              author_id: r.author_id,
+              author_name:
+                author?.display_name ||
+                author?.username ||
+                r.author_id ||
+                "Unknown",
+              author_username: author?.username || "",
+              content: r.content || "",
+              image_url: r.image_url || null,
+              created_at: r.created_at,
+              updated_at: r.updated_at,
+              comments_count: commentsCount || 0,
+              reactions_count: reactionsCount || 0,
+            };
+          })
+        );
+
+        console.log("Processed posts:", withCounts);
+        setItems(withCounts);
+      } catch (e) {
+        const err = e as Error;
+        const errorMsg = err.message || "Không tải được bài đăng";
+        setError(errorMsg);
+        console.error("Load posts error:", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    useEffect(() => {
+      loadUsers();
+      loadPosts();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [search]);
+
+    const handleDelete = async (postId: string) => {
+      if (!confirm("Xóa bài đăng này?")) return;
+      try {
+        const { error: err } = await supabase
+          .from("posts")
+          .delete()
+          .eq("id", postId);
+        if (err) throw err;
+        await loadPosts();
+      } catch (e) {
+        const err = e as Error;
+        alert(err.message || "Xóa thất bại");
+      }
+    };
+
+    const [newContent, setNewContent] = useState("");
+    const [newAuthorId, setNewAuthorId] = useState("");
+    const [creating, setCreating] = useState(false);
+
+    const handleCreate = async () => {
+      if (!newAuthorId || !newContent.trim()) {
+        alert("Nhập author_id và nội dung");
+        return;
+      }
+      try {
+        setCreating(true);
+        const { error: err } = await supabase
+          .from("posts")
+          .insert({ author_id: newAuthorId, content: newContent.trim() });
+        if (err) throw err;
+        setNewAuthorId("");
+        setNewContent("");
+        await loadPosts();
+      } catch (e) {
+        const err = e as Error;
+        alert(err.message || "Tạo bài đăng thất bại");
+      } finally {
+        setCreating(false);
+      }
+    };
+
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h2
+            className={`text-2xl font-bold ${
+              isDarkMode ? "text-white" : "text-gray-900"
             }`}
           >
-            <div className="flex justify-between items-start mb-4">
-              <div className="flex items-center space-x-3">
-                <div
-                  className={`w-12 h-12 rounded-full ${
-                    isDarkMode ? "bg-gray-700" : "bg-gray-300"
-                  } flex items-center justify-center`}
-                >
-                  <span className="text-lg font-medium text-blue-500">
-                    {post.author_name.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-                <div>
-                  <p
-                    className={`font-medium ${
-                      isDarkMode ? "text-white" : "text-gray-900"
-                    }`}
-                  >
-                    {post.author_name}
-                  </p>
-                  <p
-                    className={`text-sm ${
-                      isDarkMode ? "text-gray-400" : "text-gray-500"
-                    }`}
-                  >
-                    {formatDate(post.created_at)}
-                  </p>
-                </div>
-              </div>
-              {post.is_reported && (
-                <span className="px-3 py-1 bg-red-500/20 text-red-500 rounded-full text-sm font-medium">
-                  Đã bị báo cáo
-                </span>
-              )}
-            </div>
+            Quản lý bài đăng
+          </h2>
+          <button
+            onClick={loadPosts}
+            disabled={loading}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center space-x-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            <span>{loading ? "Đang tải..." : "Làm mới"}</span>
+          </button>
+        </div>
 
-            <p
-              className={`mb-4 ${
-                isDarkMode ? "text-gray-300" : "text-gray-700"
+        <div
+          className={`${
+            isDarkMode ? "bg-gray-800" : "bg-white"
+          } rounded-lg p-6 shadow-lg border ${
+            isDarkMode ? "border-gray-700" : "border-gray-200"
+          }`}
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <input
+              placeholder="Tìm theo nội dung..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className={`flex-1 px-4 py-2 rounded-lg border ${
+                isDarkMode
+                  ? "bg-gray-700 border-gray-600 text-white"
+                  : "bg-white border-gray-300 text-gray-900"
+              } focus:outline-none focus:ring-2 focus:ring-blue-500`}
+            />
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-3 mb-4">
+            <select
+              value={newAuthorId}
+              onChange={(e) => setNewAuthorId(e.target.value)}
+              className={`px-4 py-2 rounded-lg border ${
+                isDarkMode
+                  ? "bg-gray-700 border-gray-600 text-white"
+                  : "bg-white border-gray-300 text-gray-900"
               }`}
             >
-              {post.content}
-            </p>
-
-            <div className="flex items-center justify-between pt-4 border-t border-gray-700">
-              <div className="flex space-x-6">
-                <span
-                  className={`text-sm ${
-                    isDarkMode ? "text-gray-400" : "text-gray-600"
-                  }`}
-                >
-                  ❤️ {post.likes_count} lượt thích
-                </span>
-                <span
-                  className={`text-sm ${
-                    isDarkMode ? "text-gray-400" : "text-gray-600"
-                  }`}
-                >
-                  💬 {post.comments_count} bình luận
-                </span>
-              </div>
-              <div className="flex space-x-2">
-                <button
-                  className={`p-2 rounded-lg hover:${
-                    isDarkMode ? "bg-gray-700" : "bg-gray-100"
-                  } transition-colors`}
-                >
-                  <Eye
-                    className={`w-5 h-5 ${
-                      isDarkMode ? "text-gray-400" : "text-gray-600"
-                    }`}
-                  />
-                </button>
-                <button
-                  className={`p-2 rounded-lg hover:bg-red-500/20 transition-colors`}
-                >
-                  <Trash2 className="w-5 h-5 text-red-500" />
-                </button>
-              </div>
-            </div>
+              <option value="">Chọn tác giả...</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.display_name || u.username} ({u.username})
+                </option>
+              ))}
+            </select>
+            <input
+              placeholder="Nội dung bài đăng"
+              value={newContent}
+              onChange={(e) => setNewContent(e.target.value)}
+              className={`px-4 py-2 rounded-lg border md:col-span-2 ${
+                isDarkMode
+                  ? "bg-gray-700 border-gray-600 text-white"
+                  : "bg-white border-gray-300 text-gray-900"
+              }`}
+            />
           </div>
-        ))}
+          <div className="mb-4">
+            <button
+              onClick={handleCreate}
+              disabled={creating || !newAuthorId || !newContent.trim()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {creating ? "Đang tạo..." : "Tạo bài đăng"}
+            </button>
+          </div>
+
+          {error && (
+            <Alert>
+              <AlertDescription className="text-red-500">
+                {error}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {loading && items.length === 0 ? (
+            <p className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
+              Đang tải...
+            </p>
+          ) : items.length === 0 ? (
+            <p className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
+              Chưa có bài đăng
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 gap-6">
+              {items.map((post) => (
+                <div
+                  key={post.id}
+                  className={`${
+                    isDarkMode ? "bg-gray-800" : "bg-white"
+                  } rounded-lg p-6 shadow-lg border ${
+                    isDarkMode ? "border-gray-700" : "border-gray-200"
+                  }`}
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex items-center space-x-3">
+                      <div
+                        className={`w-12 h-12 rounded-full ${
+                          isDarkMode ? "bg-gray-700" : "bg-gray-300"
+                        } flex items-center justify-center`}
+                      >
+                        <span className="text-lg font-medium text-blue-500">
+                          {(post.author_name || "?").charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <div>
+                        <p
+                          className={`font-medium ${
+                            isDarkMode ? "text-white" : "text-gray-900"
+                          }`}
+                        >
+                          {post.author_name}
+                        </p>
+                        <p
+                          className={`text-sm ${
+                            isDarkMode ? "text-gray-400" : "text-gray-500"
+                          }`}
+                        >
+                          {formatDate(post.created_at)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className={isDarkMode ? "text-gray-300" : "text-gray-700"}>
+                    {post.content}
+                  </p>
+
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-700 mt-4">
+                    <div
+                      className={isDarkMode ? "text-gray-400" : "text-gray-600"}
+                    >
+                      ❤️ {post.reactions_count} • 💬 {post.comments_count}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleDelete(post.id)}
+                        className="p-2 rounded-lg hover:bg-red-500/20 transition-colors text-red-500"
+                        title="Xóa"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const BackupTab: React.FC = () => {
     const [backups, setBackups] = useState<
@@ -2058,14 +2277,14 @@ const AdminDashboard: React.FC = () => {
                       isDarkMode ? "text-white" : "text-gray-900"
                     }`}
                   >
-                    Admin User
+                    {user?.fullName || user?.email}
                   </p>
                   <p
                     className={`text-xs ${
                       isDarkMode ? "text-gray-400" : "text-gray-600"
                     }`}
                   >
-                    admin@chatapp.com
+                    {user?.roles?.join(", ")}
                   </p>
                 </div>
                 <ChevronDown
@@ -2074,6 +2293,19 @@ const AdminDashboard: React.FC = () => {
                   }`}
                 />
               </div>
+              <button
+                onClick={async () => {
+                  await logout();
+                  await reload();
+                }}
+                className={`px-3 py-2 rounded-lg ${
+                  isDarkMode
+                    ? "bg-gray-700 text-gray-200"
+                    : "bg-gray-100 text-gray-800"
+                } hover:opacity-80`}
+              >
+                Đăng xuất
+              </button>
             </div>
           </div>
         </div>
