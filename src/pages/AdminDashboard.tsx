@@ -61,17 +61,6 @@ interface Conversation {
   last_message_at: string;
 }
 
-interface Post {
-  id: string;
-  author_id: string;
-  author_name: string;
-  content: string;
-  created_at: string;
-  likes_count: number;
-  comments_count: number;
-  is_reported: boolean;
-}
-
 interface SystemStats {
   total_users: number;
   active_users: number;
@@ -122,17 +111,17 @@ const AdminDashboard: React.FC = () => {
         .from("messages")
         .select("*", { count: "exact", head: true });
 
-      // Count calls (if you have a calls table)
-      // const { count: totalCalls } = await supabase
-      //   .from("calls")
-      //   .select("*", { count: "exact", head: true });
+      // Count calls
+      const { count: totalCalls } = await supabase
+        .from("calls")
+        .select("*", { count: "exact", head: true });
 
       setStats({
         total_users: totalUsers || 0,
         active_users: activeUsers || 0,
         total_conversations: totalConvs || 0,
         total_messages: totalMessages || 0,
-        total_calls: 0, // Update when you have calls table
+        total_calls: totalCalls || 0,
         storage_used: "N/A", // Would need storage calculation
       });
     } catch (e) {
@@ -144,7 +133,6 @@ const AdminDashboard: React.FC = () => {
     if (activeTab === "overview") {
       loadStats();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   const formatDate = (dateString: string): string => {
@@ -207,6 +195,114 @@ const AdminDashboard: React.FC = () => {
       </p>
     </div>
   );
+
+  const CallStatsSection: React.FC<{ isDarkMode: boolean }> = ({
+    isDarkMode,
+  }) => {
+    const [callStats, setCallStats] = useState<{
+      audio: number;
+      video: number;
+      total: number;
+    }>({ audio: 0, video: 0, total: 0 });
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+      const loadCallStats = async () => {
+        try {
+          setLoading(true);
+          const [audioResult, videoResult, totalResult] = await Promise.all([
+            supabase
+              .from("calls")
+              .select("*", { count: "exact", head: true })
+              .eq("type", "audio"),
+            supabase
+              .from("calls")
+              .select("*", { count: "exact", head: true })
+              .eq("type", "video"),
+            supabase.from("calls").select("*", { count: "exact", head: true }),
+          ]);
+
+          setCallStats({
+            audio: audioResult.count || 0,
+            video: videoResult.count || 0,
+            total: totalResult.count || 0,
+          });
+        } catch (e) {
+          console.error("Error loading call stats:", e);
+        } finally {
+          setLoading(false);
+        }
+      };
+      loadCallStats();
+    }, []);
+
+    if (loading) {
+      return (
+        <p className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
+          Đang tải...
+        </p>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center space-x-2">
+            <Phone className="w-5 h-5 text-green-500" />
+            <span
+              className={`text-sm ${
+                isDarkMode ? "text-gray-300" : "text-gray-700"
+              }`}
+            >
+              Cuộc gọi thoại
+            </span>
+          </div>
+          <span
+            className={`font-semibold ${
+              isDarkMode ? "text-white" : "text-gray-900"
+            }`}
+          >
+            {callStats.audio.toLocaleString()}
+          </span>
+        </div>
+        <div className="flex justify-between items-center">
+          <div className="flex items-center space-x-2">
+            <Video className="w-5 h-5 text-blue-500" />
+            <span
+              className={`text-sm ${
+                isDarkMode ? "text-gray-300" : "text-gray-700"
+              }`}
+            >
+              Cuộc gọi video
+            </span>
+          </div>
+          <span
+            className={`font-semibold ${
+              isDarkMode ? "text-white" : "text-gray-900"
+            }`}
+          >
+            {callStats.video.toLocaleString()}
+          </span>
+        </div>
+        <div className="flex justify-between items-center pt-4 border-t border-gray-700">
+          <span
+            className={`text-sm font-medium ${
+              isDarkMode ? "text-gray-300" : "text-gray-700"
+            }`}
+          >
+            Tổng cộng
+          </span>
+          <span
+            className={`font-bold text-lg ${
+              isDarkMode ? "text-white" : "text-gray-900"
+            }`}
+          >
+            {callStats.total.toLocaleString()}
+          </span>
+        </div>
+      </div>
+    );
+  };
 
   const OverviewTab: React.FC = () => (
     <div className="space-y-6">
@@ -301,62 +397,7 @@ const AdminDashboard: React.FC = () => {
           >
             Thống kê cuộc gọi
           </h3>
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center space-x-2">
-                <Phone className="w-5 h-5 text-green-500" />
-                <span
-                  className={`text-sm ${
-                    isDarkMode ? "text-gray-300" : "text-gray-700"
-                  }`}
-                >
-                  Cuộc gọi thoại
-                </span>
-              </div>
-              <span
-                className={`font-semibold ${
-                  isDarkMode ? "text-white" : "text-gray-900"
-                }`}
-              >
-                2,145
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <div className="flex items-center space-x-2">
-                <Video className="w-5 h-5 text-blue-500" />
-                <span
-                  className={`text-sm ${
-                    isDarkMode ? "text-gray-300" : "text-gray-700"
-                  }`}
-                >
-                  Cuộc gọi video
-                </span>
-              </div>
-              <span
-                className={`font-semibold ${
-                  isDarkMode ? "text-white" : "text-gray-900"
-                }`}
-              >
-                1,311
-              </span>
-            </div>
-            <div className="flex justify-between items-center pt-4 border-t border-gray-700">
-              <span
-                className={`text-sm font-medium ${
-                  isDarkMode ? "text-gray-300" : "text-gray-700"
-                }`}
-              >
-                Tổng cộng
-              </span>
-              <span
-                className={`font-bold text-lg ${
-                  isDarkMode ? "text-white" : "text-gray-900"
-                }`}
-              >
-                {stats.total_calls.toLocaleString()}
-              </span>
-            </div>
-          </div>
+          <CallStatsSection isDarkMode={isDarkMode} />
         </div>
       </div>
     </div>
@@ -1031,6 +1072,8 @@ const AdminDashboard: React.FC = () => {
         author_username: string;
         content: string;
         image_url: string | null;
+        image_urls: string[] | null;
+        video_url: string | null;
         created_at: string;
         updated_at: string | null;
         comments_count: number;
@@ -1120,6 +1163,20 @@ const AdminDashboard: React.FC = () => {
                   .eq("post_id", r.id),
               ]);
 
+            // Xử lý image_urls - có thể là Json (array hoặc string)
+            let imageUrls: string[] | null = null;
+            if (r.image_urls) {
+              try {
+                if (typeof r.image_urls === "string") {
+                  imageUrls = JSON.parse(r.image_urls);
+                } else if (Array.isArray(r.image_urls)) {
+                  imageUrls = r.image_urls;
+                }
+              } catch (e) {
+                console.error("Error parsing image_urls:", e);
+              }
+            }
+
             return {
               id: r.id,
               author_id: r.author_id,
@@ -1131,6 +1188,8 @@ const AdminDashboard: React.FC = () => {
               author_username: author?.username || "",
               content: r.content || "",
               image_url: r.image_url || null,
+              image_urls: imageUrls,
+              video_url: r.video_url || null,
               created_at: r.created_at,
               updated_at: r.updated_at,
               comments_count: commentsCount || 0,
@@ -1299,24 +1358,26 @@ const AdminDashboard: React.FC = () => {
                   key={post.id}
                   className={`${
                     isDarkMode ? "bg-gray-800" : "bg-white"
-                  } rounded-lg p-6 shadow-lg border ${
+                  } rounded-xl p-6 shadow-md hover:shadow-xl border transition-all duration-300 ${
                     isDarkMode ? "border-gray-700" : "border-gray-200"
                   }`}
                 >
-                  <div className="flex justify-between items-start mb-4">
+                  <div className="flex justify-between items-start mb-5">
                     <div className="flex items-center space-x-3">
                       <div
                         className={`w-12 h-12 rounded-full ${
-                          isDarkMode ? "bg-gray-700" : "bg-gray-300"
-                        } flex items-center justify-center`}
+                          isDarkMode
+                            ? "bg-gradient-to-br from-blue-600 to-blue-700"
+                            : "bg-gradient-to-br from-blue-400 to-blue-500"
+                        } flex items-center justify-center shadow-md`}
                       >
-                        <span className="text-lg font-medium text-blue-500">
+                        <span className="text-lg font-semibold text-white">
                           {(post.author_name || "?").charAt(0).toUpperCase()}
                         </span>
                       </div>
                       <div>
                         <p
-                          className={`font-medium ${
+                          className={`font-semibold ${
                             isDarkMode ? "text-white" : "text-gray-900"
                           }`}
                         >
@@ -1333,20 +1394,164 @@ const AdminDashboard: React.FC = () => {
                     </div>
                   </div>
 
-                  <p className={isDarkMode ? "text-gray-300" : "text-gray-700"}>
+                  <p
+                    className={`mb-4 leading-relaxed ${
+                      isDarkMode ? "text-gray-300" : "text-gray-700"
+                    }`}
+                  >
                     {post.content}
                   </p>
 
-                  <div className="flex items-center justify-between pt-4 border-t border-gray-700 mt-4">
+                  {/* Hiển thị ảnh */}
+                  {(post.image_url || post.image_urls) && (
+                    <div className="mb-4 -mx-2">
+                      {post.image_urls && post.image_urls.length > 0 ? (
+                        // Hiển thị nhiều ảnh với layout đẹp hơn
+                        <div
+                          className={`grid gap-2 p-2 ${
+                            post.image_urls.length === 1
+                              ? "grid-cols-1"
+                              : post.image_urls.length === 2
+                              ? "grid-cols-2"
+                              : post.image_urls.length === 3
+                              ? "grid-cols-3"
+                              : "grid-cols-2"
+                          }`}
+                        >
+                          {post.image_urls.slice(0, 4).map((url, idx) => {
+                            const imageCount = post.image_urls?.length || 0;
+                            const isLast = idx === 3 && imageCount > 4;
+                            return (
+                              <div
+                                key={idx}
+                                className={`relative group cursor-pointer ${
+                                  imageCount === 3 && idx === 0
+                                    ? "row-span-2"
+                                    : ""
+                                } ${
+                                  imageCount === 1
+                                    ? "aspect-auto"
+                                    : "aspect-square"
+                                } rounded-xl overflow-hidden ${
+                                  isDarkMode ? "bg-gray-700/50" : "bg-gray-100"
+                                } shadow-md hover:shadow-xl transition-all duration-300 hover:scale-[1.02]`}
+                              >
+                                {isLast ? (
+                                  <div className="absolute inset-0 flex items-center justify-center">
+                                    <div
+                                      className={`absolute inset-0 ${
+                                        isDarkMode
+                                          ? "bg-gray-900/80"
+                                          : "bg-gray-900/70"
+                                      }`}
+                                    />
+                                    <span
+                                      className={`relative text-lg font-semibold ${
+                                        isDarkMode
+                                          ? "text-gray-100"
+                                          : "text-white"
+                                      }`}
+                                    >
+                                      +{imageCount - 4}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <img
+                                      src={
+                                        url.startsWith("http")
+                                          ? url
+                                          : `https://mpfrdrchsngwmfeelwua.supabase.co/storage/v1/object/public/chat-attachments/${url}`
+                                      }
+                                      alt={`Post image ${idx + 1}`}
+                                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                                      onError={(e) => {
+                                        (
+                                          e.target as HTMLImageElement
+                                        ).style.display = "none";
+                                      }}
+                                    />
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : post.image_url ? (
+                        // Hiển thị ảnh đơn với style đẹp hơn
+                        <div className="relative group rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300">
+                          <div
+                            className={`${
+                              isDarkMode ? "bg-gray-700/50" : "bg-gray-100"
+                            }`}
+                          >
+                            <img
+                              src={
+                                post.image_url.startsWith("http")
+                                  ? post.image_url
+                                  : `https://mpfrdrchsngwmfeelwua.supabase.co/storage/v1/object/public/chat-attachments/${post.image_url}`
+                              }
+                              alt="Post image"
+                              className="w-full max-h-[500px] object-contain mx-auto transition-transform duration-300 group-hover:scale-[1.02]"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display =
+                                  "none";
+                              }}
+                            />
+                          </div>
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors duration-300 pointer-events-none" />
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+
+                  {/* Hiển thị video */}
+                  {post.video_url && (
+                    <div className="mb-4 -mx-2">
+                      <div className="relative rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300">
+                        <video
+                          src={
+                            post.video_url.startsWith("http")
+                              ? post.video_url
+                              : `https://mpfrdrchsngwmfeelwua.supabase.co/storage/v1/object/public/chat-attachments/${post.video_url}`
+                          }
+                          controls
+                          className="w-full max-h-[500px] rounded-xl"
+                        >
+                          Trình duyệt của bạn không hỗ trợ video.
+                        </video>
+                      </div>
+                    </div>
+                  )}
+
+                  <div
+                    className={`flex items-center justify-between pt-4 border-t ${
+                      isDarkMode ? "border-gray-700" : "border-gray-200"
+                    } mt-6`}
+                  >
                     <div
-                      className={isDarkMode ? "text-gray-400" : "text-gray-600"}
+                      className={`flex items-center gap-4 text-sm ${
+                        isDarkMode ? "text-gray-400" : "text-gray-600"
+                      }`}
                     >
-                      ❤️ {post.reactions_count} • 💬 {post.comments_count}
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-red-500">❤️</span>
+                        <span className="font-medium">
+                          {post.reactions_count}
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-blue-500">💬</span>
+                        <span className="font-medium">
+                          {post.comments_count}
+                        </span>
+                      </span>
                     </div>
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleDelete(post.id)}
-                        className="p-2 rounded-lg hover:bg-red-500/20 transition-colors text-red-500"
+                        className="p-2 rounded-lg hover:bg-red-500/20 transition-all duration-200 text-red-500 hover:scale-110"
                         title="Xóa"
                       >
                         <Trash2 className="w-5 h-5" />
