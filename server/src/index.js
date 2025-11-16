@@ -709,8 +709,8 @@ ${backupContent}
 // Health
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
-// Example protected route with role check
-app.get("/api/admin/ping", requireAuth(["admin"]), (req, res) => {
+// Example protected route with role check (admin or superadmin)
+app.get("/api/admin/ping", requireAuth(["admin", "superadmin"]), (req, res) => {
   res.json({ ok: true, by: req.user });
 });
 

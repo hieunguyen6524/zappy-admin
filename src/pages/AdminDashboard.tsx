@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/context/AuthContext";
-import { logout } from "@/services/auth";
+import { logout, createAdmin, type CreateAdminRequest } from "@/services/auth";
 import { supabase } from "@/services/supabase";
 
 type TabType =
@@ -1059,8 +1059,15 @@ const AdminDashboard: React.FC = () => {
 
   const PostsTab: React.FC = () => {
     const [search, setSearch] = useState("");
+    const [filter, setFilter] = useState<"all" | "active" | "deleted">("all");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [selectedPost, setSelectedPost] = useState<string | null>(null);
+    const [showDetailModal, setShowDetailModal] = useState(false);
+    const [postComments, setPostComments] = useState<any[]>([]);
+    const [postReactions, setPostReactions] = useState<any[]>([]);
+    const [postReports, setPostReports] = useState<any[]>([]);
+    const [loadingDetails, setLoadingDetails] = useState(false);
     const [users, setUsers] = useState<
       Array<{ id: string; display_name: string; username: string }>
     >([]);
@@ -1078,6 +1085,8 @@ const AdminDashboard: React.FC = () => {
         updated_at: string | null;
         comments_count: number;
         reactions_count: number;
+        is_deleted: boolean | null;
+        reports_count: number;
       }>
     >([]);
 
@@ -1105,7 +1114,7 @@ const AdminDashboard: React.FC = () => {
         setLoading(true);
         setError(null);
 
-        // Query posts đơn giản trước
+        // Query posts với filter
         let query = supabase
           .from("posts")
           .select("*")
@@ -1114,6 +1123,13 @@ const AdminDashboard: React.FC = () => {
 
         if (search) {
           query = query.ilike("content", `%${search}%`);
+        }
+
+        // Filter theo trạng thái
+        if (filter === "active") {
+          query = query.or("is_deleted.is.null,is_deleted.eq.false");
+        } else if (filter === "deleted") {
+          query = query.eq("is_deleted", true);
         }
 
         const { data: postsData, error: err } = await query;
@@ -1151,17 +1167,24 @@ const AdminDashboard: React.FC = () => {
           rows.map(async (r) => {
             const author = authorsMap.get(r.author_id);
 
-            const [{ count: commentsCount }, { count: reactionsCount }] =
-              await Promise.all([
-                supabase
-                  .from("post_comments")
-                  .select("*", { count: "exact", head: true })
-                  .eq("post_id", r.id),
-                supabase
-                  .from("post_reactions")
-                  .select("*", { count: "exact", head: true })
-                  .eq("post_id", r.id),
-              ]);
+            const [
+              { count: commentsCount },
+              { count: reactionsCount },
+              { count: reportsCount },
+            ] = await Promise.all([
+              supabase
+                .from("post_comments")
+                .select("*", { count: "exact", head: true })
+                .eq("post_id", r.id),
+              supabase
+                .from("post_reactions")
+                .select("*", { count: "exact", head: true })
+                .eq("post_id", r.id),
+              supabase
+                .from("post_reports")
+                .select("*", { count: "exact", head: true })
+                .eq("post_id", r.id),
+            ]);
 
             // Xử lý image_urls - có thể là Json (array hoặc string)
             let imageUrls: string[] | null = null;
@@ -1194,6 +1217,8 @@ const AdminDashboard: React.FC = () => {
               updated_at: r.updated_at,
               comments_count: commentsCount || 0,
               reactions_count: reactionsCount || 0,
+              is_deleted: r.is_deleted || false,
+              reports_count: reportsCount || 0,
             };
           })
         );
@@ -1214,20 +1239,178 @@ const AdminDashboard: React.FC = () => {
       loadUsers();
       loadPosts();
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [search]);
+    }, [search, filter]);
 
-    const handleDelete = async (postId: string) => {
-      if (!confirm("Xóa bài đăng này?")) return;
+    const handleSoftDelete = async (postId: string, isDeleted: boolean) => {
+      const action = isDeleted ? "khôi phục" : "xóa";
+
+      console.log(postId, !isDeleted);
+      if (
+        !confirm(
+          `${action.charAt(0).toUpperCase() + action.slice(1)} bài đăng này?`
+        )
+      )
+        return;
       try {
+        const { error: err } = await supabase
+          .from("posts")
+          .update({ is_deleted: !isDeleted })
+          .eq("id", postId);
+        if (err) throw err;
+        await loadPosts();
+      } catch (e) {
+        const err = e as Error;
+        alert(
+          err.message ||
+            `${action.charAt(0).toUpperCase() + action.slice(1)} thất bại`
+        );
+      }
+    };
+
+    const handleHardDelete = async (postId: string) => {
+      if (
+        !confirm(
+          "Xóa vĩnh viễn bài đăng này? Hành động này không thể hoàn tác!"
+        )
+      )
+        return;
+      try {
+        // Xóa comments trước
+        await supabase.from("post_comments").delete().eq("post_id", postId);
+        // Xóa reactions
+        await supabase.from("post_reactions").delete().eq("post_id", postId);
+        // Xóa reports
+        await supabase.from("post_reports").delete().eq("post_id", postId);
+        // Xóa post
         const { error: err } = await supabase
           .from("posts")
           .delete()
           .eq("id", postId);
         if (err) throw err;
         await loadPosts();
+        if (selectedPost === postId) {
+          setShowDetailModal(false);
+          setSelectedPost(null);
+        }
       } catch (e) {
+        console.log(e);
         const err = e as Error;
         alert(err.message || "Xóa thất bại");
+      }
+    };
+
+    const loadPostDetails = async (postId: string) => {
+      setLoadingDetails(true);
+      try {
+        // Load comments
+        const { data: commentsData, error: commentsErr } = await supabase
+          .from("post_comments")
+          .select("*")
+          .eq("post_id", postId)
+          .order("created_at", { ascending: false });
+
+        if (commentsErr) throw commentsErr;
+
+        // Load user profiles for comments
+        const commentUserIds = [
+          ...new Set((commentsData || []).map((c: any) => c.user_id)),
+        ];
+        const { data: commentUsers } = await supabase
+          .from("profiles")
+          .select("id, display_name, username, avatar_url")
+          .in("id", commentUserIds);
+
+        const commentUsersMap = new Map(
+          (commentUsers || []).map((u: any) => [u.id, u])
+        );
+
+        const commentsWithUsers = (commentsData || []).map((c: any) => ({
+          ...c,
+          profiles: commentUsersMap.get(c.user_id),
+        }));
+
+        // Load reactions
+        const { data: reactionsData, error: reactionsErr } = await supabase
+          .from("post_reactions")
+          .select("*")
+          .eq("post_id", postId)
+          .order("created_at", { ascending: false });
+
+        if (reactionsErr) throw reactionsErr;
+
+        // Load user profiles for reactions
+        const reactionUserIds = [
+          ...new Set((reactionsData || []).map((r: any) => r.user_id)),
+        ];
+        const { data: reactionUsers } = await supabase
+          .from("profiles")
+          .select("id, display_name, username, avatar_url")
+          .in("id", reactionUserIds);
+
+        const reactionUsersMap = new Map(
+          (reactionUsers || []).map((u: any) => [u.id, u])
+        );
+
+        const reactionsWithUsers = (reactionsData || []).map((r: any) => ({
+          ...r,
+          profiles: reactionUsersMap.get(r.user_id),
+        }));
+
+        // Load reports
+        const { data: reportsData, error: reportsErr } = await supabase
+          .from("post_reports")
+          .select("*")
+          .eq("post_id", postId)
+          .order("created_at", { ascending: false });
+
+        if (reportsErr) throw reportsErr;
+
+        // Load user profiles for reports
+        const reportUserIds = [
+          ...new Set((reportsData || []).map((r: any) => r.reported_by)),
+        ];
+        const { data: reportUsers } = await supabase
+          .from("profiles")
+          .select("id, display_name, username")
+          .in("id", reportUserIds);
+
+        const reportUsersMap = new Map(
+          (reportUsers || []).map((u: any) => [u.id, u])
+        );
+
+        const reportsWithUsers = (reportsData || []).map((r: any) => ({
+          ...r,
+          reporter: reportUsersMap.get(r.reported_by),
+        }));
+
+        setPostComments(commentsWithUsers);
+        setPostReactions(reactionsWithUsers);
+        setPostReports(reportsWithUsers);
+      } catch (e) {
+        console.error("Error loading post details:", e);
+      } finally {
+        setLoadingDetails(false);
+      }
+    };
+
+    const handleViewDetails = async (postId: string) => {
+      setSelectedPost(postId);
+      setShowDetailModal(true);
+      await loadPostDetails(postId);
+    };
+
+    const handleDeleteComment = async (commentId: string) => {
+      if (!confirm("Xóa bình luận này?")) return;
+      try {
+        const { error: err } = await supabase
+          .from("post_comments")
+          .delete()
+          .eq("id", commentId);
+        if (err) throw err;
+        if (selectedPost) await loadPostDetails(selectedPost);
+      } catch (e) {
+        const err = e as Error;
+        alert(err.message || "Xóa bình luận thất bại");
       }
     };
 
@@ -1295,6 +1478,44 @@ const AdminDashboard: React.FC = () => {
                   : "bg-white border-gray-300 text-gray-900"
               } focus:outline-none focus:ring-2 focus:ring-blue-500`}
             />
+            <div className="flex gap-2">
+              <button
+                onClick={() => setFilter("all")}
+                className={`px-4 py-2 rounded-lg transition-colors ${
+                  filter === "all"
+                    ? "bg-blue-600 text-white"
+                    : isDarkMode
+                    ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                }`}
+              >
+                Tất cả
+              </button>
+              <button
+                onClick={() => setFilter("active")}
+                className={`px-4 py-2 rounded-lg transition-colors ${
+                  filter === "active"
+                    ? "bg-blue-600 text-white"
+                    : isDarkMode
+                    ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                }`}
+              >
+                Đang hoạt động
+              </button>
+              <button
+                onClick={() => setFilter("deleted")}
+                className={`px-4 py-2 rounded-lg transition-colors ${
+                  filter === "deleted"
+                    ? "bg-blue-600 text-white"
+                    : isDarkMode
+                    ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                }`}
+              >
+                Đã xóa
+              </button>
+            </div>
           </div>
 
           <div className="grid md:grid-cols-3 gap-3 mb-4">
@@ -1376,13 +1597,25 @@ const AdminDashboard: React.FC = () => {
                         </span>
                       </div>
                       <div>
-                        <p
-                          className={`font-semibold ${
-                            isDarkMode ? "text-white" : "text-gray-900"
-                          }`}
-                        >
-                          {post.author_name}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p
+                            className={`font-semibold ${
+                              isDarkMode ? "text-white" : "text-gray-900"
+                            }`}
+                          >
+                            {post.author_name}
+                          </p>
+                          {post.is_deleted && (
+                            <span className="px-2 py-0.5 text-xs bg-red-500/20 text-red-500 rounded">
+                              Đã xóa
+                            </span>
+                          )}
+                          {post.reports_count > 0 && (
+                            <span className="px-2 py-0.5 text-xs bg-orange-500/20 text-orange-500 rounded">
+                              {post.reports_count} báo cáo
+                            </span>
+                          )}
+                        </div>
                         <p
                           className={`text-sm ${
                             isDarkMode ? "text-gray-400" : "text-gray-500"
@@ -1550,9 +1783,33 @@ const AdminDashboard: React.FC = () => {
                     </div>
                     <div className="flex gap-2">
                       <button
-                        onClick={() => handleDelete(post.id)}
-                        className="p-2 rounded-lg hover:bg-red-500/20 transition-all duration-200 text-red-500 hover:scale-110"
-                        title="Xóa"
+                        onClick={() => handleViewDetails(post.id)}
+                        className="p-2 rounded-lg hover:bg-blue-500/20 transition-all duration-200 text-blue-500 hover:scale-110"
+                        title="Xem chi tiết"
+                      >
+                        <FileText className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() =>
+                          handleSoftDelete(post.id, post.is_deleted || false)
+                        }
+                        className={`p-2 rounded-lg transition-all duration-200 hover:scale-110 ${
+                          post.is_deleted
+                            ? "hover:bg-green-500/20 text-green-500"
+                            : "hover:bg-red-500/20 text-red-500"
+                        }`}
+                        title={post.is_deleted ? "Khôi phục" : "Xóa"}
+                      >
+                        {post.is_deleted ? (
+                          <CheckCircle className="w-5 h-5" />
+                        ) : (
+                          <Ban className="w-5 h-5" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleHardDelete(post.id)}
+                        className="p-2 rounded-lg hover:bg-red-600/20 transition-all duration-200 text-red-600 hover:scale-110"
+                        title="Xóa vĩnh viễn"
                       >
                         <Trash2 className="w-5 h-5" />
                       </button>
@@ -1563,6 +1820,264 @@ const AdminDashboard: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* Detail Modal */}
+        {showDetailModal && selectedPost && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div
+              className={`${
+                isDarkMode ? "bg-gray-800" : "bg-white"
+              } rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col`}
+            >
+              <div className="flex justify-between items-center p-6 border-b border-gray-700">
+                <h3
+                  className={`text-xl font-bold ${
+                    isDarkMode ? "text-white" : "text-gray-900"
+                  }`}
+                >
+                  Chi tiết bài đăng
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowDetailModal(false);
+                    setSelectedPost(null);
+                    setPostComments([]);
+                    setPostReactions([]);
+                    setPostReports([]);
+                  }}
+                  className={`p-2 rounded-lg hover:bg-gray-700 transition-colors ${
+                    isDarkMode ? "text-gray-400" : "text-gray-600"
+                  }`}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6">
+                {loadingDetails ? (
+                  <div className="text-center py-8">
+                    <p
+                      className={isDarkMode ? "text-gray-400" : "text-gray-600"}
+                    >
+                      Đang tải...
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Comments Section */}
+                    <div>
+                      <h4
+                        className={`text-lg font-semibold mb-4 ${
+                          isDarkMode ? "text-white" : "text-gray-900"
+                        }`}
+                      >
+                        Bình luận ({postComments.length})
+                      </h4>
+                      <div className="space-y-3">
+                        {postComments.length === 0 ? (
+                          <p
+                            className={`text-sm ${
+                              isDarkMode ? "text-gray-400" : "text-gray-600"
+                            }`}
+                          >
+                            Chưa có bình luận
+                          </p>
+                        ) : (
+                          postComments.map((comment: any) => (
+                            <div
+                              key={comment.id}
+                              className={`p-4 rounded-lg border ${
+                                isDarkMode
+                                  ? "bg-gray-700 border-gray-600"
+                                  : "bg-gray-50 border-gray-200"
+                              }`}
+                            >
+                              <div className="flex justify-between items-start">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span
+                                      className={`font-medium ${
+                                        isDarkMode
+                                          ? "text-white"
+                                          : "text-gray-900"
+                                      }`}
+                                    >
+                                      {comment.profiles?.display_name ||
+                                        comment.profiles?.username ||
+                                        "Unknown"}
+                                    </span>
+                                    <span
+                                      className={`text-xs ${
+                                        isDarkMode
+                                          ? "text-gray-400"
+                                          : "text-gray-500"
+                                      }`}
+                                    >
+                                      {formatDate(comment.created_at)}
+                                    </span>
+                                  </div>
+                                  <p
+                                    className={`${
+                                      isDarkMode
+                                        ? "text-gray-300"
+                                        : "text-gray-700"
+                                    }`}
+                                  >
+                                    {comment.content}
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() =>
+                                    handleDeleteComment(comment.id)
+                                  }
+                                  className="p-1.5 rounded hover:bg-red-500/20 text-red-500 transition-colors"
+                                  title="Xóa bình luận"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Reactions Section */}
+                    <div>
+                      <h4
+                        className={`text-lg font-semibold mb-4 ${
+                          isDarkMode ? "text-white" : "text-gray-900"
+                        }`}
+                      >
+                        Reactions ({postReactions.length})
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {postReactions.length === 0 ? (
+                          <p
+                            className={`text-sm ${
+                              isDarkMode ? "text-gray-400" : "text-gray-600"
+                            }`}
+                          >
+                            Chưa có reaction
+                          </p>
+                        ) : (
+                          postReactions.map((reaction: any) => (
+                            <div
+                              key={reaction.id}
+                              className={`px-3 py-2 rounded-lg border ${
+                                isDarkMode
+                                  ? "bg-gray-700 border-gray-600"
+                                  : "bg-gray-50 border-gray-200"
+                              }`}
+                            >
+                              <span className="mr-2">
+                                {reaction.reaction_type}
+                              </span>
+                              <span
+                                className={`text-sm ${
+                                  isDarkMode ? "text-gray-300" : "text-gray-700"
+                                }`}
+                              >
+                                {reaction.profiles?.display_name ||
+                                  reaction.profiles?.username ||
+                                  "Unknown"}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Reports Section */}
+                    <div>
+                      <h4
+                        className={`text-lg font-semibold mb-4 ${
+                          isDarkMode ? "text-white" : "text-gray-900"
+                        }`}
+                      >
+                        Báo cáo ({postReports.length})
+                      </h4>
+                      <div className="space-y-3">
+                        {postReports.length === 0 ? (
+                          <p
+                            className={`text-sm ${
+                              isDarkMode ? "text-gray-400" : "text-gray-600"
+                            }`}
+                          >
+                            Chưa có báo cáo
+                          </p>
+                        ) : (
+                          postReports.map((report: any) => (
+                            <div
+                              key={report.id}
+                              className={`p-4 rounded-lg border ${
+                                isDarkMode
+                                  ? "bg-red-900/20 border-red-700"
+                                  : "bg-red-50 border-red-200"
+                              }`}
+                            >
+                              <div className="flex justify-between items-start mb-2">
+                                <div>
+                                  <span
+                                    className={`font-medium ${
+                                      isDarkMode
+                                        ? "text-red-300"
+                                        : "text-red-800"
+                                    }`}
+                                  >
+                                    {report.reporter?.display_name ||
+                                      report.reporter?.username ||
+                                      "Unknown"}
+                                  </span>
+                                  <span
+                                    className={`text-xs ml-2 ${
+                                      isDarkMode
+                                        ? "text-red-400"
+                                        : "text-red-600"
+                                    }`}
+                                  >
+                                    {formatDate(report.created_at)}
+                                  </span>
+                                </div>
+                                <span
+                                  className={`px-2 py-1 rounded text-xs ${
+                                    isDarkMode
+                                      ? "bg-red-800 text-red-200"
+                                      : "bg-red-200 text-red-800"
+                                  }`}
+                                >
+                                  {report.reason}
+                                </span>
+                              </div>
+                              {report.description && (
+                                <p
+                                  className={`text-sm ${
+                                    isDarkMode ? "text-red-200" : "text-red-700"
+                                  }`}
+                                >
+                                  {report.description}
+                                </p>
+                              )}
+                              {report.status && (
+                                <p
+                                  className={`text-xs mt-2 ${
+                                    isDarkMode ? "text-red-400" : "text-red-600"
+                                  }`}
+                                >
+                                  Trạng thái: {report.status}
+                                </p>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -2074,6 +2589,255 @@ const AdminDashboard: React.FC = () => {
     </div>
   );
 
+  // Admin Management Component - Only for superadmin
+  const AdminManagementSection: React.FC = () => {
+    const [showCreateForm, setShowCreateForm] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [success, setSuccess] = useState<string | null>(null);
+    const [formData, setFormData] = useState<CreateAdminRequest>({
+      email: "",
+      password: "",
+      fullName: "",
+      role: "admin",
+    });
+
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setError(null);
+      setSuccess(null);
+      setLoading(true);
+
+      try {
+        if (!formData.email || !formData.password || !formData.fullName) {
+          throw new Error("Vui lòng điền đầy đủ thông tin");
+        }
+
+        if (formData.password.length < 6) {
+          throw new Error("Mật khẩu phải có ít nhất 6 ký tự");
+        }
+
+        await createAdmin(formData);
+        setSuccess("Tạo tài khoản admin thành công!");
+        setFormData({
+          email: "",
+          password: "",
+          fullName: "",
+          role: "admin",
+        });
+        setShowCreateForm(false);
+      } catch (err) {
+        const error = err as Error;
+        setError(error.message || "Tạo tài khoản thất bại");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    return (
+      <div
+        className={`${
+          isDarkMode ? "bg-gray-800" : "bg-white"
+        } rounded-lg p-6 shadow-lg border ${
+          isDarkMode ? "border-gray-700" : "border-gray-200"
+        }`}
+      >
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h3
+              className={`text-lg font-semibold ${
+                isDarkMode ? "text-white" : "text-gray-900"
+              }`}
+            >
+              Quản lý Admin
+            </h3>
+            <p
+              className={`text-sm mt-1 ${
+                isDarkMode ? "text-gray-400" : "text-gray-600"
+              }`}
+            >
+              Tạo và quản lý tài khoản admin (chỉ Superadmin)
+            </p>
+          </div>
+          {!showCreateForm && (
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+            >
+              <UserCheck className="w-4 h-4" />
+              Tạo Admin mới
+            </button>
+          )}
+        </div>
+
+        {showCreateForm && (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <Alert
+                className={`${
+                  isDarkMode
+                    ? "bg-red-900/20 border-red-700"
+                    : "bg-red-50 border-red-200"
+                }`}
+              >
+                <AlertDescription
+                  className={isDarkMode ? "text-red-300" : "text-red-800"}
+                >
+                  {error}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {success && (
+              <Alert
+                className={`${
+                  isDarkMode
+                    ? "bg-green-900/20 border-green-700"
+                    : "bg-green-50 border-green-200"
+                }`}
+              >
+                <AlertDescription
+                  className={isDarkMode ? "text-green-300" : "text-green-800"}
+                >
+                  {success}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label
+                  className={`block text-sm font-medium mb-2 ${
+                    isDarkMode ? "text-gray-300" : "text-gray-700"
+                  }`}
+                >
+                  Email <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={formData.email}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
+                  className={`w-full px-4 py-2 rounded-lg border ${
+                    isDarkMode
+                      ? "bg-gray-700 border-gray-600 text-white"
+                      : "bg-white border-gray-300 text-gray-900"
+                  } focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                  placeholder="admin@example.com"
+                />
+              </div>
+
+              <div>
+                <label
+                  className={`block text-sm font-medium mb-2 ${
+                    isDarkMode ? "text-gray-300" : "text-gray-700"
+                  }`}
+                >
+                  Họ và tên <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.fullName}
+                  onChange={(e) =>
+                    setFormData({ ...formData, fullName: e.target.value })
+                  }
+                  className={`w-full px-4 py-2 rounded-lg border ${
+                    isDarkMode
+                      ? "bg-gray-700 border-gray-600 text-white"
+                      : "bg-white border-gray-300 text-gray-900"
+                  } focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                  placeholder="Nguyễn Văn A"
+                />
+              </div>
+
+              <div>
+                <label
+                  className={`block text-sm font-medium mb-2 ${
+                    isDarkMode ? "text-gray-300" : "text-gray-700"
+                  }`}
+                >
+                  Mật khẩu <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={formData.password}
+                  onChange={(e) =>
+                    setFormData({ ...formData, password: e.target.value })
+                  }
+                  className={`w-full px-4 py-2 rounded-lg border ${
+                    isDarkMode
+                      ? "bg-gray-700 border-gray-600 text-white"
+                      : "bg-white border-gray-300 text-gray-900"
+                  } focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                  placeholder="Tối thiểu 6 ký tự"
+                  minLength={6}
+                />
+              </div>
+
+              <div>
+                <label
+                  className={`block text-sm font-medium mb-2 ${
+                    isDarkMode ? "text-gray-300" : "text-gray-700"
+                  }`}
+                >
+                  Vai trò
+                </label>
+                <select
+                  value={formData.role}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      role: e.target.value as "admin" | "superadmin",
+                    })
+                  }
+                  className={`w-full px-4 py-2 rounded-lg border ${
+                    isDarkMode
+                      ? "bg-gray-700 border-gray-600 text-white"
+                      : "bg-white border-gray-300 text-gray-900"
+                  } focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                >
+                  <option value="admin">Admin</option>
+                  <option value="superadmin">Superadmin</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? "Đang tạo..." : "Tạo tài khoản"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreateForm(false);
+                  setError(null);
+                  setSuccess(null);
+                  setFormData({
+                    email: "",
+                    password: "",
+                    fullName: "",
+                    role: "admin",
+                  });
+                }}
+                className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                Hủy
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    );
+  };
+
   const SettingsTab: React.FC = () => (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -2321,6 +3085,9 @@ const AdminDashboard: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Admin Management Section - Only visible to superadmin */}
+      {user?.roles?.includes("superadmin") && <AdminManagementSection />}
     </div>
   );
 

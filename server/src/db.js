@@ -1,20 +1,21 @@
-import knex from "knex";
+import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-const db = knex({
-  client: "mysql2",
-  connection: {
-    host: process.env.MYSQL_HOST || "127.0.0.1",
-    port: Number(process.env.MYSQL_PORT || 3306),
-    user: process.env.MYSQL_USER || "root",
-    password: process.env.MYSQL_PASSWORD || "",
-    database: process.env.MYSQL_DATABASE || "zappy_admin",
-    supportBigNumbers: true,
-    dateStrings: true,
+// Supabase client for admin database (second Supabase instance)
+const supabaseUrl = process.env.ADMIN_SUPABASE_URL;
+const supabaseKey = process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error("Missing ADMIN_SUPABASE_URL or ADMIN_SUPABASE_SERVICE_ROLE_KEY environment variables");
+}
+
+const db = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
   },
-  pool: { min: 0, max: 10 },
 });
 
 export default db;

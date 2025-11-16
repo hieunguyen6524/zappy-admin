@@ -81,13 +81,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "attachments_message_id_fkey"
-            columns: ["message_id"]
-            isOneToOne: false
-            referencedRelation: "messages"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "attachments_uploader_id_fkey"
             columns: ["uploader_id"]
             isOneToOne: false
@@ -488,13 +481,6 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "conversations_last_message_id_fkey"
-            columns: ["last_message_id"]
-            isOneToOne: false
-            referencedRelation: "messages"
-            referencedColumns: ["id"]
-          },
         ]
       }
       deleted_messages: {
@@ -514,13 +500,6 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "deleted_messages_message_id_fkey"
-            columns: ["message_id"]
-            isOneToOne: false
-            referencedRelation: "messages"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "deleted_messages_user_id_fkey"
             columns: ["user_id"]
@@ -729,13 +708,6 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "message_mentions_message_id_fkey"
-            columns: ["message_id"]
-            isOneToOne: false
-            referencedRelation: "messages"
-            referencedColumns: ["id"]
-          },
         ]
       }
       message_reactions: {
@@ -758,13 +730,6 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "message_reactions_message_id_fkey"
-            columns: ["message_id"]
-            isOneToOne: false
-            referencedRelation: "messages"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "message_reactions_user_id_fkey"
             columns: ["user_id"]
@@ -810,13 +775,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "message_reports_message_id_fkey"
-            columns: ["message_id"]
-            isOneToOne: false
-            referencedRelation: "messages"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "message_reports_reported_by_fkey"
             columns: ["reported_by"]
             isOneToOne: false
@@ -842,7 +800,7 @@ export type Database = {
           fts: unknown
           id: string
           is_forwarded: boolean | null
-          location: unknown
+          location: string | null
           location_address: string | null
           location_display_mode: string | null
           location_latitude: number | null
@@ -862,7 +820,7 @@ export type Database = {
           fts?: unknown
           id?: string
           is_forwarded?: boolean | null
-          location?: unknown
+          location?: string | null
           location_address?: string | null
           location_display_mode?: string | null
           location_latitude?: number | null
@@ -882,7 +840,7 @@ export type Database = {
           fts?: unknown
           id?: string
           is_forwarded?: boolean | null
-          location?: unknown
+          location?: string | null
           location_address?: string | null
           location_display_mode?: string | null
           location_latitude?: number | null
@@ -893,43 +851,7 @@ export type Database = {
           thread_id?: string | null
           type?: Database["public"]["Enums"]["msg_type"]
         }
-        Relationships: [
-          {
-            foreignKeyName: "messages_conversation_id_fkey"
-            columns: ["conversation_id"]
-            isOneToOne: false
-            referencedRelation: "conversations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "messages_forwarded_from_user_id_fkey"
-            columns: ["forwarded_from_user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "messages_reply_to_id_fkey"
-            columns: ["reply_to_id"]
-            isOneToOne: false
-            referencedRelation: "messages"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "messages_sender_id_fkey"
-            columns: ["sender_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "messages_thread_id_fkey"
-            columns: ["thread_id"]
-            isOneToOne: false
-            referencedRelation: "threads"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       notifications: {
         Row: {
@@ -994,13 +916,6 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "pinned_messages_message_id_fkey"
-            columns: ["message_id"]
-            isOneToOne: false
-            referencedRelation: "messages"
             referencedColumns: ["id"]
           },
           {
@@ -1125,13 +1040,6 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "polls_message_id_fkey"
-            columns: ["message_id"]
-            isOneToOne: true
-            referencedRelation: "messages"
             referencedColumns: ["id"]
           },
         ]
@@ -1385,13 +1293,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "read_receipts_message_id_fkey"
-            columns: ["message_id"]
-            isOneToOne: false
-            referencedRelation: "messages"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "read_receipts_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
@@ -1399,6 +1300,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      test: {
+        Row: {
+          created_at: string
+          id: number
+          name: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          name?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          name?: string | null
+        }
+        Relationships: []
+      }
+      test_log: {
+        Row: {
+          action: string
+          created_at: string | null
+          id: number
+          name: string | null
+          test_id: number
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          id?: number
+          name?: string | null
+          test_id: number
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          id?: number
+          name?: string | null
+          test_id?: number
+        }
+        Relationships: []
       }
       thread_participants: {
         Row: {
@@ -1508,20 +1451,6 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "threads_last_message_id_fkey"
-            columns: ["last_message_id"]
-            isOneToOne: false
-            referencedRelation: "messages"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "threads_root_message_id_fkey"
-            columns: ["root_message_id"]
-            isOneToOne: false
-            referencedRelation: "messages"
             referencedColumns: ["id"]
           },
         ]

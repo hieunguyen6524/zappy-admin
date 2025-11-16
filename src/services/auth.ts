@@ -1,5 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export type AuthUser = {
-  id: number;
+  id: string; // UUID from Supabase Auth
   email: string;
   fullName?: string;
   roles: string[];
@@ -10,7 +11,7 @@ type LoginResponse = {
   accessTokenExpiresAt: string;
   refreshToken: string;
   refreshTokenExpiresAt: string;
-  user: { id: number; email: string; fullName?: string; roles: string[] };
+  user: { id: string; email: string; fullName?: string; roles: string[] };
 };
 
 const ACCESS_KEY = "auth.accessToken";
@@ -34,7 +35,10 @@ export function clearTokens() {
   localStorage.removeItem(REFRESH_KEY);
 }
 
-export async function login(email: string, password: string): Promise<AuthUser> {
+export async function login(
+  email: string,
+  password: string
+): Promise<AuthUser> {
   const res = await fetch("/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -44,7 +48,12 @@ export async function login(email: string, password: string): Promise<AuthUser> 
   if (!res.ok) throw new Error((data as any)?.error || "Đăng nhập thất bại");
   const d = data as LoginResponse;
   setTokens(d.accessToken, d.refreshToken);
-  return { id: d.user.id, email: d.user.email, fullName: d.user.fullName, roles: d.user.roles };
+  return {
+    id: d.user.id,
+    email: d.user.email,
+    fullName: d.user.fullName,
+    roles: d.user.roles,
+  };
 }
 
 export async function refresh(): Promise<string> {
@@ -79,7 +88,10 @@ export async function logout(): Promise<void> {
   clearTokens();
 }
 
-export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+export async function authFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {}
+): Promise<Response> {
   let at = getAccessToken();
   const headers = new Headers(init.headers || {});
   if (at) headers.set("Authorization", `Bearer ${at}`);
@@ -104,10 +116,52 @@ export async function me(): Promise<AuthUser | null> {
     const data = await res.json();
     const by = data?.by;
     if (!by) return null;
-    return { id: by.id, email: by.email, roles: by.roles };
+    return { 
+      id: by.id, 
+      email: by.email, 
+      fullName: by.fullName,
+      roles: by.roles || [] 
+    };
   } catch {
     return null;
   }
 }
 
+export type CreateAdminRequest = {
+  email: string;
+  password: string;
+  fullName: string;
+  role?: "admin" | "superadmin";
+};
 
+export type CreateAdminResponse = {
+  id: string;
+  email: string;
+  fullName: string;
+  role: string;
+};
+
+export async function createAdmin(
+  data: CreateAdminRequest
+): Promise<CreateAdminResponse> {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Không có quyền truy cập");
+  }
+
+  const res = await fetch("/api/auth/register", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+
+  const result = (await res.json()) as CreateAdminResponse | { error?: string };
+  if (!res.ok) {
+    throw new Error((result as any)?.error || "Tạo tài khoản thất bại");
+  }
+
+  return result as CreateAdminResponse;
+}
