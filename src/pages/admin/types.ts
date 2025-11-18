@@ -16,6 +16,7 @@ export interface User {
   status: 'online' | 'offline';
   created_at: string;
   is_disabled: boolean;
+  is_deleted: boolean | null;
   last_seen_at: string | null;
 }
 

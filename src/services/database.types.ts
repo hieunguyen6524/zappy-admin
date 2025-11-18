@@ -81,6 +81,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "attachments_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "attachments_uploader_id_fkey"
             columns: ["uploader_id"]
             isOneToOne: false
@@ -441,6 +448,7 @@ export type Database = {
           created_at: string
           created_by: string
           id: string
+          is_deleted: boolean | null
           last_message_id: string | null
           photo_url: string
           title: string | null
@@ -454,6 +462,7 @@ export type Database = {
           created_at?: string
           created_by: string
           id?: string
+          is_deleted?: boolean | null
           last_message_id?: string | null
           photo_url?: string
           title?: string | null
@@ -467,6 +476,7 @@ export type Database = {
           created_at?: string
           created_by?: string
           id?: string
+          is_deleted?: boolean | null
           last_message_id?: string | null
           photo_url?: string
           title?: string | null
@@ -479,6 +489,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_last_message_id_fkey"
+            columns: ["last_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
             referencedColumns: ["id"]
           },
         ]
@@ -500,6 +517,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "deleted_messages_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "deleted_messages_user_id_fkey"
             columns: ["user_id"]
@@ -708,6 +732,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "message_mentions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
         ]
       }
       message_reactions: {
@@ -730,6 +761,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "message_reactions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "message_reactions_user_id_fkey"
             columns: ["user_id"]
@@ -775,6 +813,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "message_reports_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "message_reports_reported_by_fkey"
             columns: ["reported_by"]
             isOneToOne: false
@@ -800,7 +845,7 @@ export type Database = {
           fts: unknown
           id: string
           is_forwarded: boolean | null
-          location: string | null
+          location: unknown
           location_address: string | null
           location_display_mode: string | null
           location_latitude: number | null
@@ -820,7 +865,7 @@ export type Database = {
           fts?: unknown
           id?: string
           is_forwarded?: boolean | null
-          location?: string | null
+          location?: unknown
           location_address?: string | null
           location_display_mode?: string | null
           location_latitude?: number | null
@@ -840,7 +885,7 @@ export type Database = {
           fts?: unknown
           id?: string
           is_forwarded?: boolean | null
-          location?: string | null
+          location?: unknown
           location_address?: string | null
           location_display_mode?: string | null
           location_latitude?: number | null
@@ -851,7 +896,43 @@ export type Database = {
           thread_id?: string | null
           type?: Database["public"]["Enums"]["msg_type"]
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_forwarded_from_user_id_fkey"
+            columns: ["forwarded_from_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_reply_to_id_fkey"
+            columns: ["reply_to_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "threads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       notifications: {
         Row: {
@@ -916,6 +997,13 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pinned_messages_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
             referencedColumns: ["id"]
           },
           {
@@ -1042,6 +1130,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "polls_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: true
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
         ]
       }
       post_comments: {
@@ -1049,6 +1144,7 @@ export type Database = {
           content: string
           created_at: string
           id: string
+          is_deleted: boolean | null
           post_id: string
           updated_at: string | null
           user_id: string
@@ -1057,6 +1153,7 @@ export type Database = {
           content: string
           created_at?: string
           id?: string
+          is_deleted?: boolean | null
           post_id: string
           updated_at?: string | null
           user_id: string
@@ -1065,6 +1162,7 @@ export type Database = {
           content?: string
           created_at?: string
           id?: string
+          is_deleted?: boolean | null
           post_id?: string
           updated_at?: string | null
           user_id?: string
@@ -1236,6 +1334,7 @@ export type Database = {
           display_name: string
           gender: boolean
           id: string
+          is_deleted: boolean | null
           is_disabled: boolean
           is_onboarded: boolean | null
           last_seen_at: string | null
@@ -1251,6 +1350,7 @@ export type Database = {
           display_name: string
           gender: boolean
           id: string
+          is_deleted?: boolean | null
           is_disabled?: boolean
           is_onboarded?: boolean | null
           last_seen_at?: string | null
@@ -1266,6 +1366,7 @@ export type Database = {
           display_name?: string
           gender?: boolean
           id?: string
+          is_deleted?: boolean | null
           is_disabled?: boolean
           is_onboarded?: boolean | null
           last_seen_at?: string | null
@@ -1293,6 +1394,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "read_receipts_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "read_receipts_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
@@ -1300,48 +1408,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      test: {
-        Row: {
-          created_at: string
-          id: number
-          name: string | null
-        }
-        Insert: {
-          created_at?: string
-          id?: number
-          name?: string | null
-        }
-        Update: {
-          created_at?: string
-          id?: number
-          name?: string | null
-        }
-        Relationships: []
-      }
-      test_log: {
-        Row: {
-          action: string
-          created_at: string | null
-          id: number
-          name: string | null
-          test_id: number
-        }
-        Insert: {
-          action: string
-          created_at?: string | null
-          id?: number
-          name?: string | null
-          test_id: number
-        }
-        Update: {
-          action?: string
-          created_at?: string | null
-          id?: number
-          name?: string | null
-          test_id?: number
-        }
-        Relationships: []
       }
       thread_participants: {
         Row: {
@@ -1453,6 +1519,20 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "threads_last_message_id_fkey"
+            columns: ["last_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "threads_root_message_id_fkey"
+            columns: ["root_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
         ]
       }
       user_reports: {
@@ -1539,6 +1619,10 @@ export type Database = {
     }
     Functions: {
       accept_friend_request: { Args: { _user_id: string }; Returns: boolean }
+      add_members: {
+        Args: { _conversation_id: string; _user_ids: string[] }
+        Returns: undefined
+      }
       auto_set_offline_users: { Args: never; Returns: undefined }
       block_user: { Args: { _user_id: string }; Returns: boolean }
       bulk_assign_contact_labels: {
@@ -1587,10 +1671,23 @@ export type Database = {
         Args: { _is_video_enabled: boolean; _user_id: string }
         Returns: undefined
       }
+      create_group: {
+        Args: { _title: string; _user_ids: string[] }
+        Returns: undefined
+      }
       create_group_call: {
         Args: { _conversation_id: string; _is_video_enabled: boolean }
         Returns: undefined
       }
+      create_invite_link: {
+        Args: {
+          _conversation_id: string
+          _expires_at: string
+          _max_uses: number
+        }
+        Returns: boolean
+      }
+      disband_group: { Args: { _conversation_id: string }; Returns: boolean }
       generate_livekit_token: {
         Args: { participant_identity: string; room_name: string }
         Returns: {
@@ -1710,6 +1807,7 @@ export type Database = {
         Args: never
         Returns: {
           avatar_url: string
+          conversation_id: string
           display_name: string
           id: string
           label_id: string[]
@@ -1743,10 +1841,22 @@ export type Database = {
           id: string
           is_admin: boolean
           label_id: string[]
-          members: number
           photo_url: string
           title: string
           updated_at: string
+        }[]
+      }
+      get_invite_links: {
+        Args: { _conversation_id: string }
+        Returns: {
+          created_at: string
+          created_by: string
+          expires_at: string
+          id: string
+          invite_code: string
+          is_active: boolean
+          max_uses: number
+          used_count: number
         }[]
       }
       get_latest_message_conversation: {
@@ -1810,6 +1920,7 @@ export type Database = {
         Returns: undefined
       }
       join_group_via_invite: { Args: { _invite_code: string }; Returns: string }
+      join_group_with_code: { Args: { _code: string }; Returns: boolean }
       leave_group: { Args: { _conversation_id: string }; Returns: boolean }
       livekit_event_participant_joined: {
         Args: { _room_id: string; _user_id: string }
@@ -1862,6 +1973,7 @@ export type Database = {
           display_name: string
           gender: boolean
           id: string
+          is_deleted: boolean | null
           is_disabled: boolean
           is_onboarded: boolean | null
           last_seen_at: string | null

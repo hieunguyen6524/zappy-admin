@@ -1,4 +1,8 @@
-export { OverviewTab } from './OverviewTab';
-export { UsersTab } from './UsersTab';
-// Các tab khác sẽ được thêm sau khi tách xong
-
+export { OverviewTab } from "./OverviewTab";
+export { UsersTab } from "./UsersTab";
+export { ConversationsTab } from "./ConversationsTab";
+export { PostsTab } from "./PostsTab";
+export { BackupTab } from "./BackupTab";
+export { ReportsTab } from "./ReportsTab";
+export { StatisticsTab } from "./StatisticsTab";
+export { SettingsTab } from "./SettingsTab";

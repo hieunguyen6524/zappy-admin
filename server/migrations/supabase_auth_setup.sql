@@ -92,3 +92,5 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ON CONFLICT (id) DO UPDATE SET role = 'superadmin';
 
 
+
+
