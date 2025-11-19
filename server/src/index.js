@@ -332,23 +332,23 @@ app.post("/api/restore", requireAdmin, async (req, res) => {
     // Read the backup file content
     const backupContent = fs.readFileSync(filePath, 'utf8');
     
-    // Create wrapper that handles FK constraints without disabling all triggers
-    // IMPORTANT: We do NOT disable triggers because:
-    // 1. Triggers may be needed for computed columns, updated_at, audit logs, etc.
-    // 2. Schema, functions, and triggers are NOT affected by data-only restore
-    // 3. We only need to handle FK constraint violations, not disable all triggers
-    // 
-    // Strategy: Use SET CONSTRAINTS ALL DEFERRED to defer FK checks to end of transaction
-    // This allows data to be inserted in any order, but triggers still run normally
-    const wrapperContent = `-- Defer foreign key constraint checks to end of transaction
+    // Create wrapper that handles FK constraints by using session_replication_role
+    // IMPORTANT: We use session_replication_role = 'replica' to temporarily disable FK checks
+    // This allows data insertion in any order without FK violations
+    // Triggers will still run normally (important for computed columns, updated_at, etc.)
+    // After restore, we restore session_replication_role to 'origin' to re-enable FK checks
+    const wrapperContent = `-- Temporarily disable foreign key constraint checks using session_replication_role
 -- This allows data to be inserted in any order without FK violations
 -- Triggers will still run normally (important for computed columns, updated_at, etc.)
-SET CONSTRAINTS ALL DEFERRED;
+
+-- Set session replication role to 'replica' to disable FK constraint checks
+SET session_replication_role = 'replica';
 
 -- Restore the backup data
 ${backupContent}
 
--- Constraints will be checked at end of transaction automatically
+-- Restore session replication role to 'origin' to re-enable FK constraint checks
+SET session_replication_role = 'origin';
 `;
     
     fs.writeFileSync(wrapperFilePath, wrapperContent, 'utf8');
@@ -639,30 +639,44 @@ ${backupContent}
         );
         
         // Also try to update the providers column directly if it exists and is not a generated column
+        // First check if the column exists
         try {
           await runPsqlCommand(
             `DO $$
             DECLARE
               user_record RECORD;
               providers_array TEXT[];
+              column_exists BOOLEAN;
             BEGIN
-              FOR user_record IN SELECT id FROM auth.users LOOP
-                SELECT array_agg(DISTINCT provider ORDER BY provider) INTO providers_array
-                FROM auth.identities
-                WHERE user_id = user_record.id;
-                
-                IF providers_array IS NOT NULL THEN
-                  UPDATE auth.users
-                  SET providers = providers_array
-                  WHERE id = user_record.id;
-                END IF;
-              END LOOP;
+              -- Check if providers column exists
+              SELECT EXISTS (
+                SELECT 1 
+                FROM information_schema.columns 
+                WHERE table_schema = 'auth' 
+                AND table_name = 'users' 
+                AND column_name = 'providers'
+              ) INTO column_exists;
+              
+              -- Only update if column exists
+              IF column_exists THEN
+                FOR user_record IN SELECT id FROM auth.users LOOP
+                  SELECT array_agg(DISTINCT provider ORDER BY provider) INTO providers_array
+                  FROM auth.identities
+                  WHERE user_id = user_record.id;
+                  
+                  IF providers_array IS NOT NULL THEN
+                    UPDATE auth.users
+                    SET providers = providers_array
+                    WHERE id = user_record.id;
+                  END IF;
+                END LOOP;
+              END IF;
             END $$;`,
             "Update providers column"
           );
         } catch (updateError) {
-          console.log("Could not update providers column directly (may be a generated column):", updateError.message);
-          // This is OK, providers might be a generated column
+          console.log("Could not update providers column directly (may be a generated column or doesn't exist):", updateError.message);
+          // This is OK, providers might be a generated column or doesn't exist
         }
       } catch (refreshError) {
         console.error("Refresh providers error (continuing anyway):", refreshError);

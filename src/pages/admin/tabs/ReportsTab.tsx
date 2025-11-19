@@ -19,7 +19,7 @@ interface ReportsTabProps {
   isDarkMode: boolean;
 }
 
-type ReportType = "user" | "conversation" | "post";
+type ReportType = "user" | "conversation" | "post" | "message";
 type ReportStatus = "pending" | "reviewed" | "resolved" | "dismissed";
 
 interface UserReport {
@@ -95,6 +95,31 @@ interface PostReport {
   };
 }
 
+interface MessageReport {
+  id: string;
+  message_id: string;
+  reported_by: string;
+  reason: string;
+  description: string | null;
+  status: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  message?: {
+    id: string;
+    content_text: string | null;
+    sender_id: string;
+    conversation_id: string;
+    type: string;
+  };
+  reporter?: {
+    id: string;
+    username: string;
+    display_name: string;
+    avatar_url: string;
+  };
+}
+
 const ITEMS_PER_PAGE = 10;
 
 const REASON_LABELS: Record<string, string> = {
@@ -121,12 +146,13 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
   // Modal states
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedReport, setSelectedReport] = useState<
-    UserReport | ConversationReport | PostReport | null
+    UserReport | ConversationReport | PostReport | MessageReport | null
   >(null);
   const [selectedUserDetail, setSelectedUserDetail] = useState<any>(null);
   const [selectedPostDetail, setSelectedPostDetail] = useState<any>(null);
   const [selectedConversationDetail, setSelectedConversationDetail] =
     useState<any>(null);
+  const [selectedMessageDetail, setSelectedMessageDetail] = useState<any>(null);
 
   // Dropdown states for resolve action menu
   const [openResolveMenu, setOpenResolveMenu] = useState<string | null>(null);
@@ -147,6 +173,11 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
   const [postReports, setPostReports] = useState<PostReport[]>([]);
   const [postReportsPage, setPostReportsPage] = useState(1);
   const [postReportsTotal, setPostReportsTotal] = useState(0);
+
+  // Message Reports
+  const [messageReports, setMessageReports] = useState<MessageReport[]>([]);
+  const [messageReportsPage, setMessageReportsPage] = useState(1);
+  const [messageReportsTotal, setMessageReportsTotal] = useState(0);
 
   const loadUserReports = async (page: number = 1) => {
     try {
@@ -363,8 +394,83 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
     }
   };
 
+  const loadMessageReports = async (page: number = 1) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const from = (page - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+
+      let query = supabase.from("message_reports").select("*", { count: "exact" });
+
+      // Apply status filter
+      if (statusFilter === "pending") {
+        query = query.is("status", null);
+      } else if (statusFilter !== "all") {
+        query = query.eq("status", statusFilter);
+      }
+
+      // Apply search
+      if (searchQuery) {
+        query = query.ilike("description", `%${searchQuery}%`);
+      }
+
+      // Get total count
+      const { count } = await query;
+      setMessageReportsTotal(count || 0);
+
+      // Get reports with pagination
+      const { data, error: err } = await query
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      if (err) throw err;
+
+      // Load related data
+      const messageIds = new Set<string>();
+      const userIds = new Set<string>();
+      (data || []).forEach((r: any) => {
+        messageIds.add(r.message_id);
+        userIds.add(r.reported_by);
+      });
+
+      const [messagesData, usersData] = await Promise.all([
+        supabase
+          .from("messages")
+          .select("id, content_text, sender_id, conversation_id, type")
+          .in("id", Array.from(messageIds)),
+        supabase
+          .from("profiles")
+          .select("id, username, display_name, avatar_url")
+          .in("id", Array.from(userIds)),
+      ]);
+
+      const messagesMap = new Map(
+        (messagesData.data || []).map((m: any) => [m.id, m])
+      );
+      const usersMap = new Map(
+        (usersData.data || []).map((u: any) => [u.id, u])
+      );
+
+      setMessageReports(
+        (data || []).map((r: any) => ({
+          ...r,
+          message: messagesMap.get(r.message_id),
+          reporter: usersMap.get(r.reported_by),
+        }))
+      );
+    } catch (e) {
+      const err = e as Error;
+      setError(err.message || "Không tải được báo cáo tin nhắn");
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const updateReportStatus = async (
-    table: "user_reports" | "conversation_reports" | "post_reports",
+    table: "user_reports" | "conversation_reports" | "post_reports" | "message_reports",
     reportId: string,
     status: ReportStatus,
     skipReload: boolean = false
@@ -399,8 +505,12 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
         setConversationReports((prev) =>
           prev.map((r) => (r.id === reportId ? { ...r, ...updatedFields } : r))
         );
-      } else {
+      } else if (activeTab === "post") {
         setPostReports((prev) =>
+          prev.map((r) => (r.id === reportId ? { ...r, ...updatedFields } : r))
+        );
+      } else {
+        setMessageReports((prev) =>
           prev.map((r) => (r.id === reportId ? { ...r, ...updatedFields } : r))
         );
       }
@@ -418,8 +528,10 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
           await loadUserReports(userReportsPage);
         } else if (activeTab === "conversation") {
           await loadConversationReports(conversationReportsPage);
-        } else {
+        } else if (activeTab === "post") {
           await loadPostReports(postReportsPage);
+        } else {
+          await loadMessageReports(messageReportsPage);
         }
       }
     } catch (e) {
@@ -490,8 +602,22 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
     }
   };
 
+  const loadMessageDetail = async (messageId: string) => {
+    try {
+      const { data, error: err } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("id", messageId)
+        .single();
+      if (err) throw err;
+      setSelectedMessageDetail(data);
+    } catch (e) {
+      console.error("Error loading message detail:", e);
+    }
+  };
+
   const handleViewDetail = async (
-    report: UserReport | ConversationReport | PostReport
+    report: UserReport | ConversationReport | PostReport | MessageReport
   ) => {
     setSelectedReport(report);
     setShowDetailModal(true);
@@ -503,7 +629,9 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
           ? "user_reports"
           : activeTab === "conversation"
           ? "conversation_reports"
-          : "post_reports";
+          : activeTab === "post"
+          ? "post_reports"
+          : "message_reports";
       try {
         await updateReportStatus(table, report.id, "reviewed", true);
       } catch (e) {
@@ -517,6 +645,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
       await loadPostDetail(report.post_id);
     } else if (activeTab === "conversation" && "conversation_id" in report) {
       await loadConversationDetail(report.conversation_id);
+    } else if (activeTab === "message" && "message_id" in report) {
+      await loadMessageDetail(report.message_id);
     }
   };
 
@@ -559,14 +689,38 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
     }
   };
 
+  const banUserAndDeleteMessage = async (
+    userId: string,
+    messageId: string,
+    reportId: string
+  ) => {
+    if (!confirm("Bạn có chắc muốn khóa người dùng này?")) return;
+    try {
+      // Ban user
+      const { error: userErr } = await supabase
+        .from("profiles")
+        .update({ is_disabled: true })
+        .eq("id", userId);
+      if (userErr) throw userErr;
+
+      // Update report status to resolved (message stays in db)
+      await updateReportStatus("message_reports", reportId, "resolved");
+    } catch (e) {
+      const err = e as Error;
+      alert(err.message || "Khóa người dùng thất bại");
+    }
+  };
+
   useEffect(() => {
     // Reset page to 1 when switching tabs
     if (activeTab === "user") {
       setUserReportsPage(1);
     } else if (activeTab === "conversation") {
       setConversationReportsPage(1);
-    } else {
+    } else if (activeTab === "post") {
       setPostReportsPage(1);
+    } else {
+      setMessageReportsPage(1);
     }
     // Close dropdown menu when switching tabs
     setOpenResolveMenu(null);
@@ -594,6 +748,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
     setUserReportsPage(1);
     setConversationReportsPage(1);
     setPostReportsPage(1);
+    setMessageReportsPage(1);
   }, [statusFilter, searchQuery, activeTab]);
 
   useEffect(() => {
@@ -601,8 +756,10 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
       loadUserReports(userReportsPage);
     } else if (activeTab === "conversation") {
       loadConversationReports(conversationReportsPage);
-    } else {
+    } else if (activeTab === "post") {
       loadPostReports(postReportsPage);
+    } else {
+      loadMessageReports(messageReportsPage);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -610,6 +767,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
     userReportsPage,
     conversationReportsPage,
     postReportsPage,
+    messageReportsPage,
     statusFilter,
     searchQuery,
   ]);
@@ -1323,6 +1481,260 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
     );
   };
 
+  const renderMessageReports = () => {
+    const totalPages = Math.ceil(messageReportsTotal / ITEMS_PER_PAGE);
+
+    return (
+      <div className="space-y-4">
+        {loading && messageReports.length === 0 ? (
+          <div className="text-center py-8">
+            <p className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
+              Đang tải...
+            </p>
+          </div>
+        ) : messageReports.length === 0 ? (
+          <div className="text-center py-8">
+            <p className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
+              Không có báo cáo nào
+            </p>
+          </div>
+        ) : (
+          <>
+            {messageReports.map((report) => (
+              <div
+                key={report.id}
+                className={`p-4 rounded-lg ${
+                  isDarkMode ? "bg-gray-700" : "bg-gray-100"
+                }`}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-start space-x-3 flex-1">
+                    <Shield
+                      className={`w-5 h-5 mt-1 ${
+                        report.status === "resolved"
+                          ? "text-green-500"
+                          : report.status === "dismissed"
+                          ? "text-gray-500"
+                          : report.status === "reviewed"
+                          ? "text-blue-500"
+                          : "text-red-500"
+                      }`}
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <p
+                          className={`font-medium ${
+                            isDarkMode ? "text-white" : "text-gray-900"
+                          }`}
+                        >
+                          {REASON_LABELS[report.reason] || report.reason}
+                        </p>
+                        <span
+                          className={`px-2 py-1 rounded text-xs ${
+                            report.status === "resolved"
+                              ? "bg-green-500/20 text-green-500"
+                              : report.status === "dismissed"
+                              ? "bg-gray-500/20 text-gray-500"
+                              : report.status === "reviewed"
+                              ? "bg-blue-500/20 text-blue-500"
+                              : "bg-yellow-500/20 text-yellow-500"
+                          }`}
+                        >
+                          {report.status === "resolved"
+                            ? "Đã giải quyết"
+                            : report.status === "dismissed"
+                            ? "Đã bỏ qua"
+                            : report.status === "reviewed"
+                            ? "Đã xem"
+                            : "Chờ xử lý"}
+                        </span>
+                      </div>
+                      {report.description && (
+                        <p
+                          className={`text-sm mb-2 ${
+                            isDarkMode ? "text-gray-300" : "text-gray-700"
+                          }`}
+                        >
+                          {report.description}
+                        </p>
+                      )}
+                      {report.message && (
+                        <div
+                          className={`p-3 rounded mb-2 ${
+                            isDarkMode ? "bg-gray-800" : "bg-white"
+                          }`}
+                        >
+                          <p
+                            className={`text-sm mb-1 ${
+                              isDarkMode ? "text-gray-300" : "text-gray-700"
+                            }`}
+                          >
+                            {report.message.content_text
+                              ? report.message.content_text.substring(0, 200)
+                              : "[Tin nhắn không có nội dung văn bản]"}
+                            {report.message.content_text &&
+                            report.message.content_text.length > 200
+                              ? "..."
+                              : ""}
+                          </p>
+                          <p
+                            className={`text-xs ${
+                              isDarkMode ? "text-gray-400" : "text-gray-600"
+                            }`}
+                          >
+                            Loại: {report.message.type || "N/A"}
+                          </p>
+                        </div>
+                      )}
+                      <div className="space-y-1 text-sm">
+                        <p
+                          className={
+                            isDarkMode ? "text-gray-400" : "text-gray-600"
+                          }
+                        >
+                          <span className="font-medium">Người báo cáo:</span>{" "}
+                          {report.reporter?.display_name || "N/A"} (@
+                          {report.reporter?.username || "N/A"})
+                        </p>
+                        <p
+                          className={
+                            isDarkMode ? "text-gray-400" : "text-gray-600"
+                          }
+                        >
+                          <span className="font-medium">Thời gian:</span>{" "}
+                          {formatDate(report.created_at)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-600">
+                  <button
+                    onClick={() => handleViewDetail(report)}
+                    className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors flex items-center gap-1"
+                  >
+                    <Eye className="w-4 h-4" />
+                    Xem chi tiết
+                  </button>
+                  {(report.status === null ||
+                    report.status === "pending" ||
+                    report.status === "reviewed") && (
+                    <div className="relative">
+                      <button
+                        onClick={() =>
+                          setOpenResolveMenu(
+                            openResolveMenu === report.id ? null : report.id
+                          )
+                        }
+                        className="px-3 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition-colors flex items-center gap-1"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        Giải quyết
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                      {openResolveMenu === report.id && (
+                        <div
+                          className={`absolute right-0 mt-2 w-48 rounded-lg shadow-lg z-10 ${
+                            isDarkMode ? "bg-gray-800" : "bg-white"
+                          } border ${
+                            isDarkMode ? "border-gray-700" : "border-gray-200"
+                          }`}
+                        >
+                          <div className="py-1">
+                            <button
+                              onClick={() => {
+                                if (report.message) {
+                                  banUserAndDeleteMessage(
+                                    report.message.sender_id,
+                                    report.message.id,
+                                    report.id
+                                  );
+                                }
+                                setOpenResolveMenu(null);
+                              }}
+                              className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
+                                isDarkMode
+                                  ? "hover:bg-gray-700 text-red-400"
+                                  : "hover:bg-gray-100 text-red-600"
+                              }`}
+                            >
+                              <Ban className="w-4 h-4" />
+                              Khóa người dùng
+                            </button>
+                            <button
+                              onClick={() => {
+                                updateReportStatus(
+                                  "message_reports",
+                                  report.id,
+                                  "dismissed"
+                                );
+                                setOpenResolveMenu(null);
+                              }}
+                              className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
+                                isDarkMode
+                                  ? "hover:bg-gray-700 text-gray-400"
+                                  : "hover:bg-gray-100 text-gray-600"
+                              }`}
+                            >
+                              <XCircle className="w-4 h-4" />
+                              Bỏ qua
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-4">
+                <button
+                  onClick={() =>
+                    setMessageReportsPage((p) => Math.max(1, p - 1))
+                  }
+                  disabled={messageReportsPage === 1}
+                  className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
+                    messageReportsPage === 1
+                      ? "opacity-50 cursor-not-allowed"
+                      : isDarkMode
+                      ? "bg-gray-700 text-white hover:bg-gray-600"
+                      : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                  }`}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Trước
+                </button>
+                <span
+                  className={isDarkMode ? "text-gray-300" : "text-gray-700"}
+                >
+                  Trang {messageReportsPage} / {totalPages}
+                </span>
+                <button
+                  onClick={() =>
+                    setMessageReportsPage((p) => Math.min(totalPages, p + 1))
+                  }
+                  disabled={messageReportsPage === totalPages}
+                  className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
+                    messageReportsPage === totalPages
+                      ? "opacity-50 cursor-not-allowed"
+                      : isDarkMode
+                      ? "bg-gray-700 text-white hover:bg-gray-600"
+                      : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                  }`}
+                >
+                  Sau
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -1391,6 +1803,18 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
               }`}
             >
               Báo cáo bài đăng
+            </button>
+            <button
+              onClick={() => setActiveTab("message")}
+              className={`px-6 py-3 font-medium transition-colors ${
+                activeTab === "message"
+                  ? "border-b-2 border-blue-500 text-blue-500"
+                  : isDarkMode
+                  ? "text-gray-400 hover:text-gray-300"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              Báo cáo tin nhắn
             </button>
           </div>
         </div>
@@ -1483,6 +1907,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
           {activeTab === "user" && renderUserReports()}
           {activeTab === "conversation" && renderConversationReports()}
           {activeTab === "post" && renderPostReports()}
+          {activeTab === "message" && renderMessageReports()}
         </div>
       </div>
 
@@ -1513,6 +1938,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
                   setSelectedUserDetail(null);
                   setSelectedPostDetail(null);
                   setSelectedConversationDetail(null);
+                  setSelectedMessageDetail(null);
                 }}
                 className={`p-2 rounded-lg hover:bg-gray-700 transition-colors ${
                   isDarkMode ? "text-gray-400" : "text-gray-600"
@@ -1901,6 +2327,97 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
                     </>
                   )}
 
+                {/* Message Report Detail */}
+                {activeTab === "message" && "message_id" in selectedReport && (
+                  <>
+                    {selectedMessageDetail && (
+                      <div>
+                        <h4
+                          className={`text-lg font-semibold mb-3 ${
+                            isDarkMode ? "text-white" : "text-gray-900"
+                          }`}
+                        >
+                          Nội dung tin nhắn
+                        </h4>
+                        <div
+                          className={`p-4 rounded-lg ${
+                            isDarkMode ? "bg-gray-700" : "bg-gray-100"
+                          }`}
+                        >
+                          <p
+                            className={`text-sm mb-2 ${
+                              isDarkMode ? "text-gray-300" : "text-gray-700"
+                            }`}
+                          >
+                            {selectedMessageDetail.content_text ||
+                              "[Tin nhắn không có nội dung văn bản]"}
+                          </p>
+                          <p
+                            className={`text-xs mb-1 ${
+                              isDarkMode ? "text-gray-400" : "text-gray-600"
+                            }`}
+                          >
+                            Loại: {selectedMessageDetail.type || "N/A"}
+                          </p>
+                          <p
+                            className={`text-xs mt-2 ${
+                              isDarkMode ? "text-gray-400" : "text-gray-600"
+                            }`}
+                          >
+                            Ngày tạo:{" "}
+                            {formatDate(selectedMessageDetail.created_at)}
+                          </p>
+                          {selectedMessageDetail.edited_at && (
+                            <p
+                              className={`text-xs ${
+                                isDarkMode ? "text-gray-400" : "text-gray-600"
+                              }`}
+                            >
+                              Đã chỉnh sửa:{" "}
+                              {formatDate(selectedMessageDetail.edited_at)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {selectedReport.reporter && (
+                      <div>
+                        <h4
+                          className={`text-lg font-semibold mb-3 ${
+                            isDarkMode ? "text-white" : "text-gray-900"
+                          }`}
+                        >
+                          Người báo cáo
+                        </h4>
+                        <div
+                          className={`p-4 rounded-lg ${
+                            isDarkMode ? "bg-gray-700" : "bg-gray-100"
+                          }`}
+                        >
+                          <div className="space-y-2 text-sm">
+                            <p
+                              className={
+                                isDarkMode ? "text-gray-300" : "text-gray-700"
+                              }
+                            >
+                              <span className="font-medium">Tên hiển thị:</span>{" "}
+                              {selectedReport.reporter.display_name || "N/A"}
+                            </p>
+                            <p
+                              className={
+                                isDarkMode ? "text-gray-300" : "text-gray-700"
+                              }
+                            >
+                              <span className="font-medium">Username:</span> @
+                              {selectedReport.reporter.username || "N/A"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
                 {/* Action Buttons */}
                 {(selectedReport.status === null ||
                   selectedReport.status === "pending" ||
@@ -1994,6 +2511,29 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
                                   Xóa cuộc trò chuyện
                                 </button>
                               )}
+                            {activeTab === "message" &&
+                              "message_id" in selectedReport &&
+                              selectedReport.message && (
+                                <button
+                                  onClick={() => {
+                                    banUserAndDeleteMessage(
+                                      selectedReport.message!.sender_id,
+                                      selectedReport.message!.id,
+                                      selectedReport.id
+                                    );
+                                    setOpenResolveMenu(null);
+                                    setShowDetailModal(false);
+                                  }}
+                                  className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
+                                    isDarkMode
+                                      ? "hover:bg-gray-700 text-red-400"
+                                      : "hover:bg-gray-100 text-red-600"
+                                  }`}
+                                >
+                                  <Ban className="w-4 h-4" />
+                                  Khóa người dùng và xóa tin nhắn
+                                </button>
+                              )}
                             <button
                               onClick={() => {
                                 const table =
@@ -2001,7 +2541,9 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
                                     ? "user_reports"
                                     : activeTab === "conversation"
                                     ? "conversation_reports"
-                                    : "post_reports";
+                                    : activeTab === "post"
+                                    ? "post_reports"
+                                    : "message_reports";
                                 updateReportStatus(
                                   table,
                                   selectedReport.id,
