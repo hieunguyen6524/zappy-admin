@@ -1,6 +1,6 @@
-import React from 'react';
-import { AdminManagementSection } from '../components/AdminManagementSection';
-import type { AuthUser } from '@/services/auth';
+import React from "react";
+import { AdminManagementSection } from "../components/AdminManagementSection";
+import type { AuthUser } from "@/services/auth";
 
 interface SettingsTabProps {
   isDarkMode: boolean;
@@ -15,14 +15,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     <div className="flex justify-between items-center">
       <h2
         className={`text-2xl font-bold ${
-          isDarkMode ? 'text-white' : 'text-gray-900'
+          isDarkMode ? "text-white" : "text-gray-900"
         }`}
       >
         Cài đặt hệ thống
       </h2>
     </div>
 
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    {/* <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <div
         className={`${
           isDarkMode ? 'bg-gray-800' : 'bg-white'
@@ -256,11 +256,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           Lưu thay đổi
         </button>
       </div>
-    </div>
+    </div> */}
 
-    {user?.roles?.includes('superadmin') && (
+    {user?.roles?.includes("superadmin") && (
       <AdminManagementSection isDarkMode={isDarkMode} />
     )}
   </div>
 );
-

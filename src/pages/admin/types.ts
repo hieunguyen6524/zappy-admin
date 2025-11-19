@@ -37,6 +37,8 @@ export interface SystemStats {
   total_conversations: number;
   total_messages: number;
   total_calls: number;
+  total_posts?: number;
+  pending_reports?: number;
   storage_used: string;
 }
 

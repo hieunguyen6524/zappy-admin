@@ -30,26 +30,41 @@ const AdminDashboard: React.FC = () => {
     total_conversations: 0,
     total_messages: 0,
     total_calls: 0,
+    total_posts: 0,
+    pending_reports: 0,
     storage_used: "0 GB",
   });
 
+  // Format storage size helper
+  const formatStorageSize = (bytes: number): string => {
+    if (bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB", "TB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
+  };
+
   const loadStats = async () => {
     try {
-      // Count users
+      // Count total users (not deleted)
       const { count: totalUsers } = await supabase
         .from("profiles")
-        .select("*", { count: "exact", head: true });
+        .select("*", { count: "exact", head: true })
+        .or("is_deleted.is.null,is_deleted.eq.false");
 
-      // Count active users (online)
+      // Count active users (online and not disabled, not deleted)
       const { count: activeUsers } = await supabase
         .from("profiles")
         .select("*", { count: "exact", head: true })
-        .eq("status", "online");
+        .eq("status", "online")
+        .eq("is_disabled", false)
+        .or("is_deleted.is.null,is_deleted.eq.false");
 
-      // Count conversations
+      // Count conversations (not deleted)
       const { count: totalConvs } = await supabase
         .from("conversations")
-        .select("*", { count: "exact", head: true });
+        .select("*", { count: "exact", head: true })
+        .or("is_deleted.is.null,is_deleted.eq.false");
 
       // Count messages
       const { count: totalMessages } = await supabase
@@ -61,13 +76,65 @@ const AdminDashboard: React.FC = () => {
         .from("calls")
         .select("*", { count: "exact", head: true });
 
+      // Count posts (not deleted)
+      const { count: totalPosts } = await supabase
+        .from("posts")
+        .select("*", { count: "exact", head: true })
+        .or("is_deleted.is.null,is_deleted.eq.false");
+
+      // Count all pending reports (user, conversation, post, message)
+      const [userReports, convReports, postReports, messageReports] = await Promise.all([
+        supabase
+          .from("user_reports")
+          .select("*", { count: "exact", head: true })
+          .or("status.is.null,status.eq.pending"),
+        supabase
+          .from("conversation_reports")
+          .select("*", { count: "exact", head: true })
+          .or("status.is.null,status.eq.pending"),
+        supabase
+          .from("post_reports")
+          .select("*", { count: "exact", head: true })
+          .or("status.is.null,status.eq.pending"),
+        supabase
+          .from("message_reports")
+          .select("*", { count: "exact", head: true })
+          .or("status.is.null,status.eq.pending"),
+      ]);
+
+      const pendingReports = (userReports.count || 0) + 
+                            (convReports.count || 0) + 
+                            (postReports.count || 0) + 
+                            (messageReports.count || 0);
+
+      // Calculate storage used from attachments
+      // Note: This loads all attachments which may be slow for large datasets
+      // Consider creating an RPC function for better performance
+      let storageUsed = "0 B";
+      try {
+        const { data: attachments, error } = await supabase
+          .from("attachments")
+          .select("byte_size");
+        
+        if (error) {
+          console.error("Error fetching attachments:", error);
+        } else if (attachments && attachments.length > 0) {
+          const totalBytes = attachments.reduce((sum, att) => sum + (att.byte_size || 0), 0);
+          storageUsed = formatStorageSize(totalBytes);
+        }
+      } catch (e) {
+        console.error("Error calculating storage:", e);
+      }
+
       setStats({
         total_users: totalUsers || 0,
         active_users: activeUsers || 0,
         total_conversations: totalConvs || 0,
         total_messages: totalMessages || 0,
         total_calls: totalCalls || 0,
-        storage_used: "N/A", // Would need storage calculation
+        total_posts: totalPosts || 0,
+        pending_reports: pendingReports || 0,
+        storage_used: storageUsed,
       });
     } catch (e) {
       console.error("Error loading stats:", e);
@@ -75,7 +142,7 @@ const AdminDashboard: React.FC = () => {
   };
 
   useEffect(() => {
-    if (activeTab === "overview") {
+    if (activeTab === "overview" || activeTab === "backup") {
       loadStats();
     }
   }, [activeTab]);
@@ -88,7 +155,13 @@ const AdminDashboard: React.FC = () => {
   const renderContent = (): React.ReactNode => {
     switch (activeTab) {
       case "overview":
-        return <OverviewTab stats={stats} isDarkMode={isDarkMode} />;
+        return (
+          <OverviewTab
+            stats={stats}
+            isDarkMode={isDarkMode}
+            onRefresh={loadStats}
+          />
+        );
       case "users":
         return <UsersTab isDarkMode={isDarkMode} />;
       case "conversations":
