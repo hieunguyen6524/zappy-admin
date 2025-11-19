@@ -1,14 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect } from 'react';
-import { Search, Ban, Trash2, CheckCircle } from 'lucide-react';
+import { Search, Ban, Trash2, CheckCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/services/supabase';
 import type { User } from '../types';
 import { formatDate } from '../utils';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 
 interface UsersTabProps {
   isDarkMode: boolean;
 }
+
+const ITEMS_PER_PAGE = 20;
 
 export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
   const [users, setUsers] = useState<User[]>([]);
@@ -16,14 +19,49 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
   const [error, setError] = useState<string | null>(null);
   const [usersSearchQuery, setUsersSearchQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'active' | 'deleted'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
-  const loadUsers = async () => {
+  // Modal states for confirmations and alerts
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: (() => void) | null;
+    variant?: 'default' | 'danger';
+    confirmText?: string;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: null,
+    variant: 'default',
+    confirmText: 'Xác nhận',
+  });
+
+  const [alertModal, setAlertModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    variant?: 'default' | 'danger';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    variant: 'default',
+  });
+
+  const loadUsers = async (page: number = 1) => {
     try {
       setLoading(true);
       setError(null);
+      
+      const from = (page - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+
       let query = supabase
         .from('profiles')
-        .select('*')
+        .select('*', { count: 'exact' })
         .order('created_at', { ascending: false });
 
       if (usersSearchQuery) {
@@ -39,7 +77,12 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
         query = query.eq('is_deleted', true);
       }
 
-      const { data, error: err } = await query.limit(100);
+      // Get total count
+      const { count } = await query;
+      setTotalCount(count || 0);
+
+      // Get paginated data
+      const { data, error: err } = await query.range(from, to);
 
       if (err) throw err;
       setUsers(
@@ -70,46 +113,61 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
     userId: string,
     currentStatus: boolean
   ) => {
-    if (
-      !confirm(
-        `Bạn có chắc muốn ${
-          currentStatus ? 'mở khóa' : 'khóa'
-        } người dùng này?`
-      )
-    )
-      return;
-    try {
-      const { error: err } = await supabase
-        .from('profiles')
-        .update({ is_disabled: !currentStatus })
-        .eq('id', userId);
-      if (err) throw err;
-      await loadUsers();
-    } catch (e) {
-      const err = e as Error;
-      alert(err.message || 'Thao tác thất bại');
-    }
+    const action = currentStatus ? 'mở khóa' : 'khóa';
+    setConfirmModal({
+      isOpen: true,
+      title: `Xác nhận ${action} người dùng`,
+      message: `Bạn có chắc muốn ${action} người dùng này?`,
+      variant: 'danger',
+      confirmText: action === 'khóa' ? 'Khóa' : 'Mở khóa',
+      onConfirm: async () => {
+        try {
+          const { error: err } = await supabase
+            .from('profiles')
+            .update({ is_disabled: !currentStatus })
+            .eq('id', userId);
+          if (err) throw err;
+          await loadUsers(currentPage);
+        } catch (e) {
+          const err = e as Error;
+          setAlertModal({
+            isOpen: true,
+            title: 'Lỗi',
+            message: err.message || 'Thao tác thất bại',
+            variant: 'danger',
+          });
+        }
+      },
+    });
   };
 
   const handleSoftDeleteUser = async (userId: string, isDeleted: boolean) => {
     const action = isDeleted ? 'khôi phục' : 'xóa mềm';
-    if (
-      !confirm(
-        `Bạn có chắc muốn ${action} người dùng này?`
-      )
-    )
-      return;
-    try {
-      const { error: err } = await supabase
-        .from('profiles')
-        .update({ is_deleted: !isDeleted })
-        .eq('id', userId);
-      if (err) throw err;
-      await loadUsers();
-    } catch (e) {
-      const err = e as Error;
-      alert(err.message || `${action.charAt(0).toUpperCase() + action.slice(1)} thất bại`);
-    }
+    setConfirmModal({
+      isOpen: true,
+      title: `Xác nhận ${action} người dùng`,
+      message: `Bạn có chắc muốn ${action} người dùng này?`,
+      variant: 'danger',
+      confirmText: action === 'xóa mềm' ? 'Xóa' : 'Khôi phục',
+      onConfirm: async () => {
+        try {
+          const { error: err } = await supabase
+            .from('profiles')
+            .update({ is_deleted: !isDeleted })
+            .eq('id', userId);
+          if (err) throw err;
+          await loadUsers(currentPage);
+        } catch (e) {
+          const err = e as Error;
+          setAlertModal({
+            isOpen: true,
+            title: 'Lỗi',
+            message: err.message || `${action.charAt(0).toUpperCase() + action.slice(1)} thất bại`,
+            variant: 'danger',
+          });
+        }
+      },
+    });
   };
 
   const handleHardDeleteUser = async (userId: string) => {
@@ -125,7 +183,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
         .delete()
         .eq('id', userId);
       if (err) throw err;
-      await loadUsers();
+      await loadUsers(currentPage);
     } catch (e) {
       const err = e as Error;
       alert(err.message || 'Xóa vĩnh viễn thất bại');
@@ -133,9 +191,13 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
   };
 
   useEffect(() => {
-    loadUsers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setCurrentPage(1);
   }, [usersSearchQuery, filter]);
+
+  useEffect(() => {
+    loadUsers(currentPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, usersSearchQuery, filter]);
 
   return (
     <div className="space-y-6">
@@ -447,8 +509,104 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination */}
+          {Math.ceil(totalCount / ITEMS_PER_PAGE) > 1 && (
+            <div className="flex items-center justify-between pt-4 mt-4 border-t border-gray-700">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
+                  currentPage === 1
+                    ? 'opacity-50 cursor-not-allowed'
+                    : isDarkMode
+                    ? 'bg-gray-700 text-white hover:bg-gray-600'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Trước
+              </button>
+              <span
+                className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}
+              >
+                Trang {currentPage} / {Math.ceil(totalCount / ITEMS_PER_PAGE)}
+              </span>
+              <button
+                onClick={() =>
+                  setCurrentPage((p) =>
+                    Math.min(Math.ceil(totalCount / ITEMS_PER_PAGE), p + 1)
+                  )
+                }
+                disabled={currentPage >= Math.ceil(totalCount / ITEMS_PER_PAGE)}
+                className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
+                  currentPage >= Math.ceil(totalCount / ITEMS_PER_PAGE)
+                    ? 'opacity-50 cursor-not-allowed'
+                    : isDarkMode
+                    ? 'bg-gray-700 text-white hover:bg-gray-600'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                Sau
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Confirm Modal */}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        onClose={() =>
+          setConfirmModal({
+            isOpen: false,
+            title: '',
+            message: '',
+            onConfirm: null,
+          })
+        }
+        onConfirm={() => {
+          if (confirmModal.onConfirm) {
+            confirmModal.onConfirm();
+          }
+          setConfirmModal({
+            isOpen: false,
+            title: '',
+            message: '',
+            onConfirm: null,
+          });
+        }}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText || 'Xác nhận'}
+        variant={confirmModal.variant || 'default'}
+        isDarkMode={isDarkMode}
+      />
+
+      {/* Alert Modal */}
+      <ConfirmModal
+        isOpen={alertModal.isOpen}
+        onClose={() =>
+          setAlertModal({
+            isOpen: false,
+            title: '',
+            message: '',
+          })
+        }
+        onConfirm={() =>
+          setAlertModal({
+            isOpen: false,
+            title: '',
+            message: '',
+          })
+        }
+        title={alertModal.title}
+        message={alertModal.message}
+        confirmText="Đóng"
+        variant={alertModal.variant || 'default'}
+        isDarkMode={isDarkMode}
+      />
     </div>
   );
 };

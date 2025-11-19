@@ -1,34 +1,82 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect } from 'react';
-import { Trash2, MessagesSquare } from 'lucide-react';
+import { Trash2, MessagesSquare, ChevronLeft, ChevronRight, Ban, CheckCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/services/supabase';
 import type { Conversation } from '../types';
 import { formatDate } from '../utils';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 
 interface ConversationsTabProps {
   isDarkMode: boolean;
 }
 
+const ITEMS_PER_PAGE = 20;
+
 export const ConversationsTab: React.FC<ConversationsTabProps> = ({ isDarkMode }) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [filter, setFilter] = useState<'all' | 'active' | 'deleted'>('all');
 
-  const loadConversations = async () => {
+  // Modal states for confirmations and alerts
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: (() => void) | null;
+    variant?: 'default' | 'danger';
+    confirmText?: string;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: null,
+    variant: 'default',
+    confirmText: 'Xác nhận',
+  });
+
+  const [alertModal, setAlertModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    variant?: 'default' | 'danger';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    variant: 'default',
+  });
+
+  const loadConversations = async (page: number = 1) => {
     try {
       setLoading(true);
       setError(null);
 
-      // Lấy danh sách conversations
-      const { data: convs, error: convErr } = await supabase
+      const from = (page - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+
+      // Lấy danh sách conversations với pagination
+      let query = supabase
         .from('conversations')
-        .select('*')
+        .select('*', { count: 'exact' })
         .order('updated_at', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false })
-        .limit(100);
+        .order('created_at', { ascending: false });
+
+      // Filter theo trạng thái xóa mềm
+      if (filter === 'active') {
+        query = query.or('is_deleted.is.null,is_deleted.eq.false');
+      } else if (filter === 'deleted') {
+        query = query.eq('is_deleted', true);
+      }
+
+      const { data: convs, count, error: convErr } = await query.range(from, to);
 
       if (convErr) throw convErr;
+
+      setTotalCount(count || 0);
 
       // Lấy thông tin participants và messages cho từng conversation
       const conversationsWithCounts = await Promise.all(
@@ -66,7 +114,8 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ isDarkMode }
             participants_count: participantsCount || 0,
             messages_count: messagesCount || 0,
             last_message_at:
-              lastMessage?.created_at || conv.updated_at || conv.created_at
+              lastMessage?.created_at || conv.updated_at || conv.created_at,
+            is_deleted: conv.is_deleted || false
           };
         })
       );
@@ -81,30 +130,72 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ isDarkMode }
     }
   };
 
-  const handleDeleteConversation = async (conversationId: string) => {
-    if (
-      !confirm(
-        'Bạn có chắc muốn xóa cuộc trò chuyện này? Tất cả tin nhắn và dữ liệu liên quan sẽ bị xóa vĩnh viễn.'
-      )
-    )
-      return;
-    try {
-      // Xóa conversation sẽ cascade delete participants và messages (nếu có foreign key cascade)
-      const { error: err } = await supabase
-        .from('conversations')
-        .delete()
-        .eq('id', conversationId);
-      if (err) throw err;
-      await loadConversations();
-    } catch (e) {
-      const err = e as Error;
-      alert(err.message || 'Xóa thất bại');
-    }
+  const handleSoftDelete = async (conversationId: string, isDeleted: boolean) => {
+    const action = isDeleted ? 'khôi phục' : 'xóa mềm';
+    setConfirmModal({
+      isOpen: true,
+      title: `Xác nhận ${action} cuộc trò chuyện`,
+      message: `Bạn có chắc muốn ${action} cuộc trò chuyện này?`,
+      variant: 'danger',
+      confirmText: action === 'xóa mềm' ? 'Xóa' : 'Khôi phục',
+      onConfirm: async () => {
+        try {
+          const { error: err } = await supabase
+            .from('conversations')
+            .update({ is_deleted: !isDeleted })
+            .eq('id', conversationId);
+          if (err) throw err;
+          await loadConversations(currentPage);
+        } catch (e) {
+          const err = e as Error;
+          setAlertModal({
+            isOpen: true,
+            title: 'Lỗi',
+            message: err.message || `${action.charAt(0).toUpperCase() + action.slice(1)} thất bại`,
+            variant: 'danger',
+          });
+        }
+      },
+    });
+  };
+
+  const handleHardDelete = async (conversationId: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Xác nhận xóa vĩnh viễn',
+      message: 'Bạn có chắc muốn xóa vĩnh viễn cuộc trò chuyện này? Tất cả tin nhắn và dữ liệu liên quan sẽ bị xóa vĩnh viễn. Hành động này không thể hoàn tác!',
+      variant: 'danger',
+      confirmText: 'Xóa vĩnh viễn',
+      onConfirm: async () => {
+        try {
+          // Xóa conversation sẽ cascade delete participants và messages (nếu có foreign key cascade)
+          const { error: err } = await supabase
+            .from('conversations')
+            .delete()
+            .eq('id', conversationId);
+          if (err) throw err;
+          await loadConversations(currentPage);
+        } catch (e) {
+          const err = e as Error;
+          setAlertModal({
+            isOpen: true,
+            title: 'Lỗi',
+            message: err.message || 'Xóa thất bại',
+            variant: 'danger',
+          });
+        }
+      },
+    });
   };
 
   useEffect(() => {
-    loadConversations();
-  }, []);
+    setCurrentPage(1);
+  }, [filter]);
+
+  useEffect(() => {
+    loadConversations(currentPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, filter]);
 
   return (
     <div className="space-y-6">
@@ -117,11 +208,51 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ isDarkMode }
           Quản lý cuộc trò chuyện
         </h2>
         <button
-          onClick={loadConversations}
+          onClick={() => loadConversations(currentPage)}
           disabled={loading}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
         >
           {loading ? 'Đang tải...' : 'Làm mới'}
+        </button>
+      </div>
+
+      {/* Filter buttons */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setFilter('all')}
+          className={`px-4 py-2 rounded-lg transition-colors ${
+            filter === 'all'
+              ? 'bg-blue-600 text-white'
+              : isDarkMode
+              ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          Tất cả
+        </button>
+        <button
+          onClick={() => setFilter('active')}
+          className={`px-4 py-2 rounded-lg transition-colors ${
+            filter === 'active'
+              ? 'bg-blue-600 text-white'
+              : isDarkMode
+              ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          Đang hoạt động
+        </button>
+        <button
+          onClick={() => setFilter('deleted')}
+          className={`px-4 py-2 rounded-lg transition-colors ${
+            filter === 'deleted'
+              ? 'bg-blue-600 text-white'
+              : isDarkMode
+              ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          Đã xóa
         </button>
       </div>
 
@@ -185,6 +316,13 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ isDarkMode }
                     Hoạt động cuối
                   </th>
                   <th
+                    className={`px-4 py-3 text-left text-sm font-semibold ${
+                      isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                    }`}
+                  >
+                    Trạng thái
+                  </th>
+                  <th
                     className={`px-4 py-3 text-right text-sm font-semibold ${
                       isDarkMode ? 'text-gray-300' : 'text-gray-700'
                     }`}
@@ -196,7 +334,7 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ isDarkMode }
               <tbody>
                 {loading && conversations.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center">
+                    <td colSpan={7} className="px-4 py-8 text-center">
                       <p
                         className={
                           isDarkMode ? 'text-gray-400' : 'text-gray-600'
@@ -208,7 +346,7 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ isDarkMode }
                   </tr>
                 ) : conversations.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center">
+                    <td colSpan={7} className="px-4 py-8 text-center">
                       <p
                         className={
                           isDarkMode ? 'text-gray-400' : 'text-gray-600'
@@ -293,12 +431,38 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ isDarkMode }
                       >
                         {formatDate(conv.last_message_at)}
                       </td>
+                      <td className="px-4 py-4">
+                        {conv.is_deleted ? (
+                          <span className="px-2 py-1 text-xs bg-red-500/20 text-red-500 rounded">
+                            Đã xóa
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 text-xs bg-green-500/20 text-green-500 rounded">
+                            Hoạt động
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-4 text-right">
                         <div className="flex justify-end space-x-2">
                           <button
-                            onClick={() => handleDeleteConversation(conv.id)}
-                            className="p-2 rounded-lg hover:bg-red-500/20 transition-colors text-red-500"
-                            title="Xóa"
+                            onClick={() => handleSoftDelete(conv.id, conv.is_deleted || false)}
+                            className={`p-2 rounded-lg transition-colors ${
+                              conv.is_deleted
+                                ? 'hover:bg-green-500/20 text-green-500'
+                                : 'hover:bg-red-500/20 text-red-500'
+                            }`}
+                            title={conv.is_deleted ? 'Khôi phục' : 'Xóa mềm'}
+                          >
+                            {conv.is_deleted ? (
+                              <CheckCircle className="w-5 h-5" />
+                            ) : (
+                              <Ban className="w-5 h-5" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleHardDelete(conv.id)}
+                            className="p-2 rounded-lg hover:bg-red-600/20 transition-colors text-red-600"
+                            title="Xóa vĩnh viễn"
                           >
                             <Trash2 className="w-5 h-5" />
                           </button>
@@ -310,8 +474,104 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ isDarkMode }
               </tbody>
             </table>
           </div>
+
+          {/* Pagination */}
+          {Math.ceil(totalCount / ITEMS_PER_PAGE) > 1 && (
+            <div className="flex items-center justify-between pt-4 mt-4 border-t border-gray-700">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
+                  currentPage === 1
+                    ? 'opacity-50 cursor-not-allowed'
+                    : isDarkMode
+                    ? 'bg-gray-700 text-white hover:bg-gray-600'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Trước
+              </button>
+              <span
+                className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}
+              >
+                Trang {currentPage} / {Math.ceil(totalCount / ITEMS_PER_PAGE)}
+              </span>
+              <button
+                onClick={() =>
+                  setCurrentPage((p) =>
+                    Math.min(Math.ceil(totalCount / ITEMS_PER_PAGE), p + 1)
+                  )
+                }
+                disabled={currentPage >= Math.ceil(totalCount / ITEMS_PER_PAGE)}
+                className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
+                  currentPage >= Math.ceil(totalCount / ITEMS_PER_PAGE)
+                    ? 'opacity-50 cursor-not-allowed'
+                    : isDarkMode
+                    ? 'bg-gray-700 text-white hover:bg-gray-600'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                Sau
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Confirm Modal */}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        onClose={() =>
+          setConfirmModal({
+            isOpen: false,
+            title: '',
+            message: '',
+            onConfirm: null,
+          })
+        }
+        onConfirm={() => {
+          if (confirmModal.onConfirm) {
+            confirmModal.onConfirm();
+          }
+          setConfirmModal({
+            isOpen: false,
+            title: '',
+            message: '',
+            onConfirm: null,
+          });
+        }}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText || 'Xác nhận'}
+        variant={confirmModal.variant || 'default'}
+        isDarkMode={isDarkMode}
+      />
+
+      {/* Alert Modal */}
+      <ConfirmModal
+        isOpen={alertModal.isOpen}
+        onClose={() =>
+          setAlertModal({
+            isOpen: false,
+            title: '',
+            message: '',
+          })
+        }
+        onConfirm={() =>
+          setAlertModal({
+            isOpen: false,
+            title: '',
+            message: '',
+          })
+        }
+        title={alertModal.title}
+        message={alertModal.message}
+        confirmText="Đóng"
+        variant={alertModal.variant || 'default'}
+        isDarkMode={isDarkMode}
+      />
     </div>
   );
 };

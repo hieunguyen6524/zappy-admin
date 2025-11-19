@@ -11,9 +11,11 @@ import {
   Search,
   Eye,
   ChevronDown,
+  RefreshCw,
 } from "lucide-react";
 import { supabase } from "@/services/supabase";
 import { formatDate } from "../utils";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 interface ReportsTabProps {
   isDarkMode: boolean;
@@ -156,6 +158,35 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
 
   // Dropdown states for resolve action menu
   const [openResolveMenu, setOpenResolveMenu] = useState<string | null>(null);
+
+  // Modal states for confirmations and alerts
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: (() => void) | null;
+    variant?: "default" | "danger";
+    confirmText?: string;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: null,
+    variant: "default",
+    confirmText: "Xác nhận",
+  });
+
+  const [alertModal, setAlertModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    variant?: "default" | "danger" | "success";
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    variant: "default",
+  });
 
   // User Reports
   const [userReports, setUserReports] = useState<UserReport[]>([]);
@@ -537,27 +568,45 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
     } catch (e) {
       const err = e as Error;
       console.error("Error updating report status:", e);
-      alert(err.message || "Cập nhật trạng thái thất bại");
+      setAlertModal({
+        isOpen: true,
+        title: "Lỗi",
+        message: err.message || "Cập nhật trạng thái thất bại",
+        variant: "danger",
+      });
       throw e; // Re-throw to allow caller to handle
     }
   };
 
   const banUser = async (userId: string, reportId: string) => {
-    if (!confirm("Bạn có chắc muốn khóa người dùng này?")) return;
-    try {
-      // Ban user first
-      const { error: err } = await supabase
-        .from("profiles")
-        .update({ is_disabled: true })
-        .eq("id", userId);
-      if (err) throw err;
+    setConfirmModal({
+      isOpen: true,
+      title: "Xác nhận khóa người dùng",
+      message: "Bạn có chắc muốn khóa người dùng này?",
+      variant: "danger",
+      confirmText: "Khóa",
+      onConfirm: async () => {
+        try {
+          // Ban user first
+          const { error: err } = await supabase
+            .from("profiles")
+            .update({ is_disabled: true })
+            .eq("id", userId);
+          if (err) throw err;
 
-      // Then update report status to resolved
-      await updateReportStatus("user_reports", reportId, "resolved");
-    } catch (e) {
-      const err = e as Error;
-      alert(err.message || "Khóa người dùng thất bại");
-    }
+          // Then update report status to resolved
+          await updateReportStatus("user_reports", reportId, "resolved");
+        } catch (e) {
+          const err = e as Error;
+          setAlertModal({
+            isOpen: true,
+            title: "Lỗi",
+            message: err.message || "Khóa người dùng thất bại",
+            variant: "danger",
+          });
+        }
+      },
+    });
   };
 
   const loadUserDetail = async (userId: string) => {
@@ -651,42 +700,68 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
   };
 
   const deletePost = async (postId: string, reportId: string) => {
-    if (!confirm("Bạn có chắc muốn xóa bài đăng này?")) return;
-    try {
-      // Delete post first
-      const { error: err } = await supabase
-        .from("posts")
-        .update({ is_deleted: true })
-        .eq("id", postId);
-      if (err) throw err;
+    setConfirmModal({
+      isOpen: true,
+      title: "Xác nhận xóa bài đăng",
+      message: "Bạn có chắc muốn xóa bài đăng này?",
+      variant: "danger",
+      confirmText: "Xóa",
+      onConfirm: async () => {
+        try {
+          // Delete post first
+          const { error: err } = await supabase
+            .from("posts")
+            .update({ is_deleted: true })
+            .eq("id", postId);
+          if (err) throw err;
 
-      // Then update report status to resolved
-      await updateReportStatus("post_reports", reportId, "resolved");
-    } catch (e) {
-      const err = e as Error;
-      alert(err.message || "Xóa bài đăng thất bại");
-    }
+          // Then update report status to resolved
+          await updateReportStatus("post_reports", reportId, "resolved");
+        } catch (e) {
+          const err = e as Error;
+          setAlertModal({
+            isOpen: true,
+            title: "Lỗi",
+            message: err.message || "Xóa bài đăng thất bại",
+            variant: "danger",
+          });
+        }
+      },
+    });
   };
 
   const deleteConversation = async (
     conversationId: string,
     reportId: string
   ) => {
-    if (!confirm("Bạn có chắc muốn xóa cuộc trò chuyện này?")) return;
-    try {
-      // Delete conversation first
-      const { error: err } = await supabase
-        .from("conversations")
-        .update({ is_deleted: true })
-        .eq("id", conversationId);
-      if (err) throw err;
+    setConfirmModal({
+      isOpen: true,
+      title: "Xác nhận xóa cuộc trò chuyện",
+      message: "Bạn có chắc muốn xóa cuộc trò chuyện này?",
+      variant: "danger",
+      confirmText: "Xóa",
+      onConfirm: async () => {
+        try {
+          // Delete conversation first
+          const { error: err } = await supabase
+            .from("conversations")
+            .update({ is_deleted: true })
+            .eq("id", conversationId);
+          if (err) throw err;
 
-      // Then update report status to resolved
-      await updateReportStatus("conversation_reports", reportId, "resolved");
-    } catch (e) {
-      const err = e as Error;
-      alert(err.message || "Xóa cuộc trò chuyện thất bại");
-    }
+          // Then update report status to resolved
+          await updateReportStatus("conversation_reports", reportId, "resolved");
+        } catch (e) {
+          const err = e as Error;
+          setAlertModal({
+            isOpen: true,
+            title: "Lỗi",
+            message: err.message || "Xóa cuộc trò chuyện thất bại",
+            variant: "danger",
+          });
+        }
+      },
+    });
   };
 
   const banUserAndDeleteMessage = async (
@@ -694,21 +769,34 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
     messageId: string,
     reportId: string
   ) => {
-    if (!confirm("Bạn có chắc muốn khóa người dùng này?")) return;
-    try {
-      // Ban user
-      const { error: userErr } = await supabase
-        .from("profiles")
-        .update({ is_disabled: true })
-        .eq("id", userId);
-      if (userErr) throw userErr;
+    setConfirmModal({
+      isOpen: true,
+      title: "Xác nhận khóa người dùng",
+      message: "Bạn có chắc muốn khóa người dùng này?",
+      variant: "danger",
+      confirmText: "Khóa",
+      onConfirm: async () => {
+        try {
+          // Ban user
+          const { error: userErr } = await supabase
+            .from("profiles")
+            .update({ is_disabled: true })
+            .eq("id", userId);
+          if (userErr) throw userErr;
 
-      // Update report status to resolved (message stays in db)
-      await updateReportStatus("message_reports", reportId, "resolved");
-    } catch (e) {
-      const err = e as Error;
-      alert(err.message || "Khóa người dùng thất bại");
-    }
+          // Update report status to resolved (message stays in db)
+          await updateReportStatus("message_reports", reportId, "resolved");
+        } catch (e) {
+          const err = e as Error;
+          setAlertModal({
+            isOpen: true,
+            title: "Lỗi",
+            message: err.message || "Khóa người dùng thất bại",
+            variant: "danger",
+          });
+        }
+      },
+    });
   };
 
   useEffect(() => {
@@ -1735,6 +1823,18 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
     );
   };
 
+  const handleRefresh = () => {
+    if (activeTab === "user") {
+      loadUserReports(userReportsPage);
+    } else if (activeTab === "conversation") {
+      loadConversationReports(conversationReportsPage);
+    } else if (activeTab === "post") {
+      loadPostReports(postReportsPage);
+    } else {
+      loadMessageReports(messageReportsPage);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -1745,6 +1845,14 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
         >
           Quản lý báo cáo
         </h2>
+        <button
+          onClick={handleRefresh}
+          disabled={loading}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center space-x-2"
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          <span>{loading ? "Đang tải..." : "Làm mới"}</span>
+        </button>
       </div>
 
       {error && (
@@ -2572,6 +2680,59 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ isDarkMode }) => {
           </div>
         </div>
       )}
+
+      {/* Confirm Modal */}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        onClose={() =>
+          setConfirmModal({
+            isOpen: false,
+            title: "",
+            message: "",
+            onConfirm: null,
+          })
+        }
+        onConfirm={() => {
+          if (confirmModal.onConfirm) {
+            confirmModal.onConfirm();
+          }
+          setConfirmModal({
+            isOpen: false,
+            title: "",
+            message: "",
+            onConfirm: null,
+          });
+        }}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText || "Xác nhận"}
+        variant={confirmModal.variant || "default"}
+        isDarkMode={isDarkMode}
+      />
+
+      {/* Alert Modal */}
+      <ConfirmModal
+        isOpen={alertModal.isOpen}
+        onClose={() =>
+          setAlertModal({
+            isOpen: false,
+            title: "",
+            message: "",
+          })
+        }
+        onConfirm={() =>
+          setAlertModal({
+            isOpen: false,
+            title: "",
+            message: "",
+          })
+        }
+        title={alertModal.title}
+        message={alertModal.message}
+        confirmText="Đóng"
+        variant={alertModal.variant || "default"}
+        isDarkMode={isDarkMode}
+      />
     </div>
   );
 };
