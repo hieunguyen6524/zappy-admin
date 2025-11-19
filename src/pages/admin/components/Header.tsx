@@ -1,5 +1,5 @@
 import React from "react";
-import { Search, Bell, Moon, Sun, ChevronDown } from "lucide-react";
+import { Search, Moon, Sun } from "lucide-react";
 
 import type { AuthUser } from "@/services/auth";
 
