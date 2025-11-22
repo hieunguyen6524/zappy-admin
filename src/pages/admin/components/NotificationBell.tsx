@@ -10,6 +10,7 @@ interface ReportNotification {
   description: string | null;
   reportedBy: string | null;
   createdAt: string;
+  readAt: string | null;
   table: string;
   recordId: string;
 }
@@ -26,7 +27,6 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
   const [notifications, setNotifications] = useState<ReportNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Load initial pending reports
@@ -36,25 +36,25 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
         await Promise.all([
           supabase
             .from("user_reports")
-            .select("id, reason, description, reported_by, created_at, reported_user_id")
+            .select("id, reason, description, reported_by, created_at, read_at, reported_user_id")
             .or("status.is.null,status.eq.pending")
             .order("created_at", { ascending: false })
             .limit(10),
           supabase
             .from("post_reports")
-            .select("id, reason, description, reported_by, created_at, post_id")
+            .select("id, reason, description, reported_by, created_at, read_at, post_id")
             .or("status.is.null,status.eq.pending")
             .order("created_at", { ascending: false })
             .limit(10),
           supabase
             .from("message_reports")
-            .select("id, reason, description, reported_by, created_at, message_id")
+            .select("id, reason, description, reported_by, created_at, read_at, message_id")
             .or("status.is.null,status.eq.pending")
             .order("created_at", { ascending: false })
             .limit(10),
           supabase
             .from("conversation_reports")
-            .select("id, reason, description, reported_by, created_at, conversation_id")
+            .select("id, reason, description, reported_by, created_at, read_at, conversation_id")
             .or("status.is.null,status.eq.pending")
             .order("created_at", { ascending: false })
             .limit(10),
@@ -71,6 +71,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
             description: r.description,
             reportedBy: r.reported_by,
             createdAt: r.created_at,
+            readAt: r.read_at,
             table: "user_reports",
             recordId: r.reported_user_id,
           });
@@ -86,6 +87,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
             description: r.description,
             reportedBy: r.reported_by,
             createdAt: r.created_at,
+            readAt: r.read_at,
             table: "post_reports",
             recordId: r.post_id,
           });
@@ -101,6 +103,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
             description: r.description,
             reportedBy: r.reported_by,
             createdAt: r.created_at,
+            readAt: r.read_at,
             table: "message_reports",
             recordId: r.message_id,
           });
@@ -116,6 +119,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
             description: r.description,
             reportedBy: r.reported_by,
             createdAt: r.created_at,
+            readAt: r.read_at,
             table: "conversation_reports",
             recordId: r.conversation_id,
           });
@@ -128,8 +132,11 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
 
+      // Count unread (read_at is null)
+      const unread = allReports.filter((n) => !n.readAt).length;
+
       setNotifications(allReports);
-      setUnreadCount(allReports.length);
+      setUnreadCount(unread);
     } catch (error) {
       console.error("Error loading initial reports:", error);
     }
@@ -162,6 +169,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
             description: payload.new.description,
             reportedBy: payload.new.reported_by,
             createdAt: payload.new.created_at,
+            readAt: payload.new.read_at || null,
             table: "user_reports",
             recordId: payload.new.reported_user_id,
           };
@@ -193,6 +201,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
             description: payload.new.description,
             reportedBy: payload.new.reported_by,
             createdAt: payload.new.created_at,
+            readAt: payload.new.read_at || null,
             table: "post_reports",
             recordId: payload.new.post_id,
           };
@@ -224,6 +233,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
             description: payload.new.description,
             reportedBy: payload.new.reported_by,
             createdAt: payload.new.created_at,
+            readAt: payload.new.read_at || null,
             table: "message_reports",
             recordId: payload.new.message_id,
           };
@@ -255,6 +265,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
             description: payload.new.description,
             reportedBy: payload.new.reported_by,
             createdAt: payload.new.created_at,
+            readAt: payload.new.read_at || null,
             table: "conversation_reports",
             recordId: payload.new.conversation_id,
           };
@@ -286,7 +297,10 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
   const handleNewReport = (report: ReportNotification) => {
     setNotifications((prev) => [report, ...prev]);
-    setUnreadCount((prev) => prev + 1);
+    // Only increment if not read yet
+    if (!report.readAt) {
+      setUnreadCount((prev) => prev + 1);
+    }
 
     // Show toast notification
     const typeLabels: Record<string, string> = {
@@ -329,19 +343,92 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     );
   };
 
-  const handleNotificationClick = (notification: ReportNotification) => {
-    setReadIds((prev) => new Set([...prev, notification.id]));
-    setUnreadCount((prev) => Math.max(0, prev - 1));
-    setShowDropdown(false);
-    if (onNotificationClick) {
-      onNotificationClick(notification);
+  const handleNotificationClick = async (notification: ReportNotification) => {
+    // If already read, just navigate
+    if (notification.readAt) {
+      setShowDropdown(false);
+      if (onNotificationClick) {
+        onNotificationClick(notification);
+      }
+      return;
+    }
+
+    // Update read_at in database
+    try {
+      const now = new Date().toISOString();
+      const { error } = await supabase
+        .from(notification.table)
+        .update({ read_at: now })
+        .eq("id", notification.id);
+
+      if (error) {
+        console.error("Error updating read_at:", error);
+        toast.error("Không thể đánh dấu đã đọc");
+        return;
+      }
+
+      // Update local state
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.id === notification.id ? { ...n, readAt: now } : n
+        )
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+      setShowDropdown(false);
+
+      if (onNotificationClick) {
+        onNotificationClick(notification);
+      }
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+      toast.error("Không thể đánh dấu đã đọc");
     }
   };
 
-  const markAllAsRead = () => {
-    const allIds = notifications.map((n) => n.id);
-    setReadIds(new Set(allIds));
-    setUnreadCount(0);
+  const markAllAsRead = async () => {
+    const unreadNotifications = notifications.filter((n) => !n.readAt);
+    if (unreadNotifications.length === 0) return;
+
+    try {
+      const now = new Date().toISOString();
+
+      // Group by table to batch updates
+      const updatesByTable: Record<string, string[]> = {};
+      unreadNotifications.forEach((n) => {
+        if (!updatesByTable[n.table]) {
+          updatesByTable[n.table] = [];
+        }
+        updatesByTable[n.table].push(n.id);
+      });
+
+      // Update each table
+      const updatePromises = Object.entries(updatesByTable).map(
+        ([table, ids]) =>
+          supabase
+            .from(table)
+            .update({ read_at: now })
+            .in("id", ids)
+      );
+
+      const results = await Promise.all(updatePromises);
+      const hasError = results.some((r) => r.error);
+
+      if (hasError) {
+        console.error("Error marking all as read:", results);
+        toast.error("Không thể đánh dấu tất cả đã đọc");
+        return;
+      }
+
+      // Update local state
+      setNotifications((prev) =>
+        prev.map((n) => (n.readAt ? n : { ...n, readAt: now }))
+      );
+      setUnreadCount(0);
+      toast.success("Đã đánh dấu tất cả đã đọc");
+    } catch (error) {
+      console.error("Error marking all as read:", error);
+      toast.error("Không thể đánh dấu tất cả đã đọc");
+    }
   };
 
   const formatDate = (dateString: string): string => {
@@ -453,7 +540,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
             ) : (
               <div className="divide-y divide-gray-700">
                 {notifications.map((notification) => {
-                  const isRead = readIds.has(notification.id);
+                  const isRead = !!notification.readAt;
                   return (
                     <button
                       key={notification.id}

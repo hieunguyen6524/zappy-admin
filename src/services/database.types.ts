@@ -388,6 +388,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          read_at: string | null
           reason: Database["public"]["Enums"]["report_reason"]
           reported_by: string
           reviewed_at: string | null
@@ -399,6 +400,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          read_at?: string | null
           reason: Database["public"]["Enums"]["report_reason"]
           reported_by: string
           reviewed_at?: string | null
@@ -410,6 +412,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          read_at?: string | null
           reason?: Database["public"]["Enums"]["report_reason"]
           reported_by?: string
           reviewed_at?: string | null
@@ -783,6 +786,7 @@ export type Database = {
           description: string | null
           id: string
           message_id: string
+          read_at: string | null
           reason: Database["public"]["Enums"]["report_reason"]
           reported_by: string
           reviewed_at: string | null
@@ -794,6 +798,7 @@ export type Database = {
           description?: string | null
           id?: string
           message_id: string
+          read_at?: string | null
           reason: Database["public"]["Enums"]["report_reason"]
           reported_by: string
           reviewed_at?: string | null
@@ -805,6 +810,7 @@ export type Database = {
           description?: string | null
           id?: string
           message_id?: string
+          read_at?: string | null
           reason?: Database["public"]["Enums"]["report_reason"]
           reported_by?: string
           reviewed_at?: string | null
@@ -1229,6 +1235,7 @@ export type Database = {
           description: string | null
           id: string
           post_id: string
+          read_at: string | null
           reason: Database["public"]["Enums"]["report_reason"]
           reported_by: string
           reviewed_at: string | null
@@ -1240,6 +1247,7 @@ export type Database = {
           description?: string | null
           id?: string
           post_id: string
+          read_at?: string | null
           reason: Database["public"]["Enums"]["report_reason"]
           reported_by: string
           reviewed_at?: string | null
@@ -1251,6 +1259,7 @@ export type Database = {
           description?: string | null
           id?: string
           post_id?: string
+          read_at?: string | null
           reason?: Database["public"]["Enums"]["report_reason"]
           reported_by?: string
           reviewed_at?: string | null
@@ -1543,6 +1552,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          read_at: string | null
           reason: Database["public"]["Enums"]["report_reason"]
           reported_by: string
           reported_user_id: string
@@ -1554,6 +1564,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          read_at?: string | null
           reason: Database["public"]["Enums"]["report_reason"]
           reported_by: string
           reported_user_id: string
@@ -1565,6 +1576,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          read_at?: string | null
           reason?: Database["public"]["Enums"]["report_reason"]
           reported_by?: string
           reported_user_id?: string
