@@ -16,11 +16,13 @@ Hệ thống đã được chuyển sang sử dụng **Supabase Auth** (bảng `
 ### 1. Chạy SQL Migration
 
 Mở Supabase SQL Editor và chạy file:
+
 ```
 server/migrations/supabase_auth_setup.sql
 ```
 
 File này sẽ tạo:
+
 - Bảng `admin_profiles` để lưu thông tin admin
 - Các function helper (is_superadmin, is_admin)
 - RLS policies
@@ -35,6 +37,7 @@ npm run create-superadmin
 ```
 
 Script sẽ hỏi:
+
 - Email
 - Password (tối thiểu 6 ký tự)
 - Full Name (mặc định: "Super Admin")
@@ -71,6 +74,7 @@ Content-Type: application/json
 ```
 
 Response:
+
 ```json
 {
   "accessToken": "jwt-token",
@@ -102,7 +106,8 @@ Content-Type: application/json
 }
 ```
 
-**Lưu ý**: 
+**Lưu ý**:
+
 - Chỉ superadmin mới có quyền gọi endpoint này
 - Role có thể là `"admin"` hoặc `"superadmin"`
 
@@ -132,6 +137,7 @@ Content-Type: application/json
 ## Cấu trúc Database
 
 ### auth.users (Supabase Auth)
+
 - `id` (UUID): Primary key
 - `email`: Email đăng nhập
 - `encrypted_password`: Mật khẩu đã mã hóa
@@ -140,6 +146,7 @@ Content-Type: application/json
 - `updated_at`: Thời gian cập nhật
 
 ### admin_profiles
+
 - `id` (UUID): Foreign key → `auth.users.id`
 - `full_name`: Tên đầy đủ
 - `role`: `'admin'` hoặc `'superadmin'`
@@ -149,12 +156,13 @@ Content-Type: application/json
 
 ## Quyền (Roles)
 
-- **superadmin**: 
+- **superadmin**:
+
   - Có tất cả quyền của admin
   - Có thể tạo tài khoản admin/superadmin mới
   - Có thể quản lý tất cả admin khác
 
-- **admin**: 
+- **admin**:
   - Có thể đăng nhập và sử dụng hệ thống
   - Không thể tạo tài khoản mới
 
@@ -165,31 +173,35 @@ Content-Type: application/json
 Kiểm tra authentication và role:
 
 ```javascript
-import { requireAuth } from './auth.js';
+import { requireAuth } from "./auth.js";
 
 // Yêu cầu đăng nhập (bất kỳ admin nào)
-app.get('/api/protected', requireAuth(), handler);
+app.get("/api/protected", requireAuth(), handler);
 
 // Yêu cầu role cụ thể
-app.get('/api/admin-only', requireAuth(['admin', 'superadmin']), handler);
+app.get("/api/admin-only", requireAuth(["admin", "superadmin"]), handler);
 ```
 
 ## Troubleshooting
 
 ### Lỗi "User is not an admin"
+
 - Kiểm tra xem đã tạo `admin_profiles` cho user chưa
 - Kiểm tra `is_active = true`
 
 ### Lỗi "Only superadmin can create accounts"
+
 - Đảm bảo token được gửi kèm trong header `Authorization: Bearer <token>`
 - Kiểm tra user có role `superadmin` trong `admin_profiles`
 
 ### Lỗi "Invalid credentials"
+
 - Kiểm tra email và password
 - Kiểm tra user đã được tạo trong `auth.users`
 - Kiểm tra `admin_profiles.is_active = true`
 
 ### Lỗi khi tạo superadmin
+
 - Đảm bảo đã chạy SQL migration
 - Kiểm tra `ADMIN_SUPABASE_SERVICE_ROLE_KEY` đúng
 - Kiểm tra email chưa tồn tại trong `auth.users`
@@ -209,9 +221,3 @@ Nếu bạn đang migrate từ hệ thống cũ (MySQL/custom users):
 2. **JWT Secret**: Giữ bí mật, sử dụng biến môi trường
 3. **RLS Policies**: Đã được thiết lập để bảo vệ `admin_profiles`
 4. **Password**: Supabase tự động hash password, không lưu plain text
-
-
-
-
-
-

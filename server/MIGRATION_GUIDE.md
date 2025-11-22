@@ -81,6 +81,7 @@ npm run dev
 ```
 
 Test các endpoints:
+
 - `POST /api/auth/register` - Đăng ký tài khoản mới
 - `POST /api/auth/login` - Đăng nhập
 - `POST /api/auth/refresh` - Làm mới token
@@ -90,19 +91,17 @@ Test các endpoints:
 ## Troubleshooting
 
 ### Lỗi "Missing ADMIN_SUPABASE_URL or ADMIN_SUPABASE_SERVICE_ROLE_KEY"
+
 - Kiểm tra file `.env` đã có đầy đủ các biến môi trường
 
 ### Lỗi "relation does not exist"
+
 - Chạy lại SQL migration file `supabase_init_auth.sql`
 
 ### Lỗi "permission denied"
+
 - Đảm bảo đang sử dụng Service Role Key, không phải anon key
 
 ### Lỗi khi join tables
+
 - Kiểm tra foreign key relationships đã được tạo đúng trong Supabase
-
-
-
-
-
-

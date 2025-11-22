@@ -152,6 +152,17 @@ const AdminDashboard: React.FC = () => {
     await reload();
   };
 
+  const handleNotificationClick = (notification: {
+    type: string;
+    table: string;
+    recordId: string;
+  }) => {
+    // Switch to reports tab
+    setActiveTab("reports");
+    // The ReportsTab will handle filtering based on the notification type
+    // You can pass the notification data via state or context if needed
+  };
+
   const renderContent = (): React.ReactNode => {
     switch (activeTab) {
       case "overview":
@@ -197,6 +208,7 @@ const AdminDashboard: React.FC = () => {
           user={user}
           onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
           onLogout={handleLogout}
+          onNotificationClick={handleNotificationClick}
         />
 
         <div className="p-8">{renderContent()}</div>

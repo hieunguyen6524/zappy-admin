@@ -2,12 +2,18 @@ import React from "react";
 import { Search, Moon, Sun } from "lucide-react";
 
 import type { AuthUser } from "@/services/auth";
+import { NotificationBell } from "./NotificationBell";
 
 interface HeaderProps {
   isDarkMode: boolean;
   user: AuthUser | null;
   onToggleDarkMode: () => void;
   onLogout: () => Promise<void>;
+  onNotificationClick?: (notification: {
+    type: string;
+    table: string;
+    recordId: string;
+  }) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -15,6 +21,7 @@ export const Header: React.FC<HeaderProps> = ({
   user,
   onToggleDarkMode,
   onLogout,
+  onNotificationClick,
 }) => {
   return (
     <div
@@ -43,6 +50,11 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="flex items-center space-x-4">
+          <NotificationBell
+            isDarkMode={isDarkMode}
+            onNotificationClick={onNotificationClick}
+          />
+
           <button
             onClick={onToggleDarkMode}
             className={`p-2 rounded-lg ${
@@ -57,19 +69,6 @@ export const Header: React.FC<HeaderProps> = ({
               <Moon className="w-5 h-5" />
             )}
           </button>
-
-          {/* <button
-            className={`relative p-2 rounded-lg ${
-              isDarkMode ? "bg-gray-700" : "bg-gray-100"
-            } hover:opacity-80 transition-opacity`}
-          >
-            <Bell
-              className={`w-5 h-5 ${
-                isDarkMode ? "text-gray-300" : "text-gray-700"
-              }`}
-            />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-          </button> */}
 
           <div className="flex items-center space-x-3">
             <div

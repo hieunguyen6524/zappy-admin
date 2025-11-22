@@ -1337,6 +1337,7 @@ export type Database = {
           is_deleted: boolean | null
           is_disabled: boolean
           is_onboarded: boolean | null
+          is_private: boolean | null
           last_seen_at: string | null
           status: Database["public"]["Enums"]["user_status"]
           status_updated_at: string
@@ -1353,6 +1354,7 @@ export type Database = {
           is_deleted?: boolean | null
           is_disabled?: boolean
           is_onboarded?: boolean | null
+          is_private?: boolean | null
           last_seen_at?: string | null
           status?: Database["public"]["Enums"]["user_status"]
           status_updated_at?: string
@@ -1369,6 +1371,7 @@ export type Database = {
           is_deleted?: boolean | null
           is_disabled?: boolean
           is_onboarded?: boolean | null
+          is_private?: boolean | null
           last_seen_at?: string | null
           status?: Database["public"]["Enums"]["user_status"]
           status_updated_at?: string
@@ -1921,6 +1924,10 @@ export type Database = {
       }
       join_group_via_invite: { Args: { _invite_code: string }; Returns: string }
       join_group_with_code: { Args: { _code: string }; Returns: boolean }
+      kick_group_member: {
+        Args: { _conversation_id: string; _member_id: string }
+        Returns: boolean
+      }
       leave_group: { Args: { _conversation_id: string }; Returns: boolean }
       livekit_event_participant_joined: {
         Args: { _room_id: string; _user_id: string }
@@ -1951,6 +1958,7 @@ export type Database = {
         Returns: boolean
       }
       remove_friend: { Args: { _user_id: string }; Returns: undefined }
+      remove_message: { Args: { _message_id: string }; Returns: boolean }
       search_users: {
         Args: { _search: string }
         Returns: {
@@ -1976,6 +1984,7 @@ export type Database = {
           is_deleted: boolean | null
           is_disabled: boolean
           is_onboarded: boolean | null
+          is_private: boolean | null
           last_seen_at: string | null
           status: Database["public"]["Enums"]["user_status"]
           status_updated_at: string
@@ -1993,6 +2002,10 @@ export type Database = {
         Returns: boolean
       }
       set_online_status: { Args: never; Returns: undefined }
+      switch_group_admin: {
+        Args: { _conversation_id: string; _member_id: string }
+        Returns: boolean
+      }
       verify_user_password: { Args: { _password: string }; Returns: boolean }
     }
     Enums: {
