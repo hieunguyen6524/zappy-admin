@@ -1,11 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect } from 'react';
-import { Search, Ban, Trash2, CheckCircle, ChevronLeft, ChevronRight } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { supabase } from '@/services/supabase';
-import type { User } from '../types';
-import { formatDate } from '../utils';
-import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import React, { useState, useEffect } from "react";
+import {
+  Search,
+  Ban,
+  Trash2,
+  CheckCircle,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { supabase } from "@/services/supabase";
+import type { User } from "../types";
+import { formatDate } from "../utils";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 interface UsersTabProps {
   isDarkMode: boolean;
@@ -17,8 +24,8 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [usersSearchQuery, setUsersSearchQuery] = useState('');
-  const [filter, setFilter] = useState<'all' | 'active' | 'deleted'>('all');
+  const [usersSearchQuery, setUsersSearchQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "active" | "deleted">("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
@@ -28,41 +35,41 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
     title: string;
     message: string;
     onConfirm: (() => void) | null;
-    variant?: 'default' | 'danger';
+    variant?: "default" | "danger";
     confirmText?: string;
   }>({
     isOpen: false,
-    title: '',
-    message: '',
+    title: "",
+    message: "",
     onConfirm: null,
-    variant: 'default',
-    confirmText: 'Xác nhận',
+    variant: "default",
+    confirmText: "Xác nhận",
   });
 
   const [alertModal, setAlertModal] = useState<{
     isOpen: boolean;
     title: string;
     message: string;
-    variant?: 'default' | 'danger';
+    variant?: "default" | "danger";
   }>({
     isOpen: false,
-    title: '',
-    message: '',
-    variant: 'default',
+    title: "",
+    message: "",
+    variant: "default",
   });
 
   const loadUsers = async (page: number = 1) => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const from = (page - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
 
       let query = supabase
-        .from('profiles')
-        .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false });
+        .from("profiles")
+        .select("*", { count: "exact" })
+        .order("created_at", { ascending: false });
 
       if (usersSearchQuery) {
         query = query.or(
@@ -71,10 +78,10 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
       }
 
       // Filter theo trạng thái xóa mềm
-      if (filter === 'active') {
-        query = query.or('is_deleted.is.null,is_deleted.eq.false');
-      } else if (filter === 'deleted') {
-        query = query.eq('is_deleted', true);
+      if (filter === "active") {
+        query = query.or("is_deleted.is.null,is_deleted.eq.false");
+      } else if (filter === "deleted") {
+        query = query.eq("is_deleted", true);
       }
 
       // Get total count
@@ -91,50 +98,47 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
           username: u.username,
           display_name: u.display_name,
           avatar_url: u.avatar_url
-            ? `https://mpfrdrchsngwmfeelwua.supabase.co/${u.avatar_url}`
-            : '',
+            ? `https://mpfrdrchsngwmfeelwua.supabase.co/storage/v1/object/public/avatars/${u.avatar_url}`
+            : "https://mpfrdrchsngwmfeelwua.supabase.co/storage/v1/object/public/avatars/default.jpg",
           status: u.status,
           created_at: u.created_at,
           is_disabled: u.is_disabled || false,
           is_deleted: u.is_deleted || false,
-          last_seen_at: u.last_seen_at
+          last_seen_at: u.last_seen_at,
         }))
       );
     } catch (e) {
       const err = e as Error;
-      setError(err.message || 'Không tải được danh sách người dùng');
+      setError(err.message || "Không tải được danh sách người dùng");
       console.error(e);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDisableUser = async (
-    userId: string,
-    currentStatus: boolean
-  ) => {
-    const action = currentStatus ? 'mở khóa' : 'khóa';
+  const handleDisableUser = async (userId: string, currentStatus: boolean) => {
+    const action = currentStatus ? "mở khóa" : "khóa";
     setConfirmModal({
       isOpen: true,
       title: `Xác nhận ${action} người dùng`,
       message: `Bạn có chắc muốn ${action} người dùng này?`,
-      variant: 'danger',
-      confirmText: action === 'khóa' ? 'Khóa' : 'Mở khóa',
+      variant: "danger",
+      confirmText: action === "khóa" ? "Khóa" : "Mở khóa",
       onConfirm: async () => {
         try {
           const { error: err } = await supabase
-            .from('profiles')
+            .from("profiles")
             .update({ is_disabled: !currentStatus })
-            .eq('id', userId);
+            .eq("id", userId);
           if (err) throw err;
           await loadUsers(currentPage);
         } catch (e) {
           const err = e as Error;
           setAlertModal({
             isOpen: true,
-            title: 'Lỗi',
-            message: err.message || 'Thao tác thất bại',
-            variant: 'danger',
+            title: "Lỗi",
+            message: err.message || "Thao tác thất bại",
+            variant: "danger",
           });
         }
       },
@@ -142,28 +146,30 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
   };
 
   const handleSoftDeleteUser = async (userId: string, isDeleted: boolean) => {
-    const action = isDeleted ? 'khôi phục' : 'xóa mềm';
+    const action = isDeleted ? "khôi phục" : "xóa mềm";
     setConfirmModal({
       isOpen: true,
       title: `Xác nhận ${action} người dùng`,
       message: `Bạn có chắc muốn ${action} người dùng này?`,
-      variant: 'danger',
-      confirmText: action === 'xóa mềm' ? 'Xóa' : 'Khôi phục',
+      variant: "danger",
+      confirmText: action === "xóa mềm" ? "Xóa" : "Khôi phục",
       onConfirm: async () => {
         try {
           const { error: err } = await supabase
-            .from('profiles')
+            .from("profiles")
             .update({ is_deleted: !isDeleted })
-            .eq('id', userId);
+            .eq("id", userId);
           if (err) throw err;
           await loadUsers(currentPage);
         } catch (e) {
           const err = e as Error;
           setAlertModal({
             isOpen: true,
-            title: 'Lỗi',
-            message: err.message || `${action.charAt(0).toUpperCase() + action.slice(1)} thất bại`,
-            variant: 'danger',
+            title: "Lỗi",
+            message:
+              err.message ||
+              `${action.charAt(0).toUpperCase() + action.slice(1)} thất bại`,
+            variant: "danger",
           });
         }
       },
@@ -173,20 +179,20 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
   const handleHardDeleteUser = async (userId: string) => {
     if (
       !confirm(
-        'Bạn có chắc muốn xóa vĩnh viễn người dùng này? Hành động này không thể hoàn tác và sẽ xóa tất cả dữ liệu liên quan.'
+        "Bạn có chắc muốn xóa vĩnh viễn người dùng này? Hành động này không thể hoàn tác và sẽ xóa tất cả dữ liệu liên quan."
       )
     )
       return;
     try {
       const { error: err } = await supabase
-        .from('profiles')
+        .from("profiles")
         .delete()
-        .eq('id', userId);
+        .eq("id", userId);
       if (err) throw err;
       await loadUsers(currentPage);
     } catch (e) {
       const err = e as Error;
-      alert(err.message || 'Xóa vĩnh viễn thất bại');
+      alert(err.message || "Xóa vĩnh viễn thất bại");
     }
   };
 
@@ -204,7 +210,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
       <div className="flex justify-between items-center">
         <h2
           className={`text-2xl font-bold ${
-            isDarkMode ? 'text-white' : 'text-gray-900'
+            isDarkMode ? "text-white" : "text-gray-900"
           }`}
         >
           Quản lý người dùng
@@ -215,7 +221,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
             disabled={loading}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
-            {loading ? 'Đang tải...' : 'Làm mới'}
+            {loading ? "Đang tải..." : "Làm mới"}
           </button>
         </div>
       </div>
@@ -228,9 +234,9 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
 
       <div
         className={`${
-          isDarkMode ? 'bg-gray-800' : 'bg-white'
+          isDarkMode ? "bg-gray-800" : "bg-white"
         } rounded-lg shadow-lg border ${
-          isDarkMode ? 'border-gray-700' : 'border-gray-200'
+          isDarkMode ? "border-gray-700" : "border-gray-200"
         }`}
       >
         <div className="p-6">
@@ -238,7 +244,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
             <div className="relative flex-1">
               <Search
                 className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${
-                  isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                  isDarkMode ? "text-gray-400" : "text-gray-500"
                 }`}
               />
               <input
@@ -248,44 +254,44 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
                 onChange={(e) => setUsersSearchQuery(e.target.value)}
                 className={`w-full pl-10 pr-4 py-2 rounded-lg border ${
                   isDarkMode
-                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
-                    : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                    ? "bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+                    : "bg-white border-gray-300 text-gray-900 placeholder-gray-500"
                 } focus:outline-none focus:ring-2 focus:ring-blue-500`}
               />
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => setFilter('all')}
+                onClick={() => setFilter("all")}
                 className={`px-4 py-2 rounded-lg transition-colors ${
-                  filter === 'all'
-                    ? 'bg-blue-600 text-white'
+                  filter === "all"
+                    ? "bg-blue-600 text-white"
                     : isDarkMode
-                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                 }`}
               >
                 Tất cả
               </button>
               <button
-                onClick={() => setFilter('active')}
+                onClick={() => setFilter("active")}
                 className={`px-4 py-2 rounded-lg transition-colors ${
-                  filter === 'active'
-                    ? 'bg-blue-600 text-white'
+                  filter === "active"
+                    ? "bg-blue-600 text-white"
                     : isDarkMode
-                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                 }`}
               >
                 Đang hoạt động
               </button>
               <button
-                onClick={() => setFilter('deleted')}
+                onClick={() => setFilter("deleted")}
                 className={`px-4 py-2 rounded-lg transition-colors ${
-                  filter === 'deleted'
-                    ? 'bg-blue-600 text-white'
+                  filter === "deleted"
+                    ? "bg-blue-600 text-white"
                     : isDarkMode
-                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                 }`}
               >
                 Đã xóa
@@ -298,40 +304,40 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
               <thead>
                 <tr
                   className={`border-b ${
-                    isDarkMode ? 'border-gray-700' : 'border-gray-200'
+                    isDarkMode ? "border-gray-700" : "border-gray-200"
                   }`}
                 >
                   <th
                     className={`px-4 py-3 text-left text-sm font-semibold ${
-                      isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                      isDarkMode ? "text-gray-300" : "text-gray-700"
                     }`}
                   >
                     Người dùng
                   </th>
                   <th
                     className={`px-4 py-3 text-left text-sm font-semibold ${
-                      isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                      isDarkMode ? "text-gray-300" : "text-gray-700"
                     }`}
                   >
                     Trạng thái
                   </th>
                   <th
                     className={`px-4 py-3 text-left text-sm font-semibold ${
-                      isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                      isDarkMode ? "text-gray-300" : "text-gray-700"
                     }`}
                   >
                     Ngày tham gia
                   </th>
                   <th
                     className={`px-4 py-3 text-left text-sm font-semibold ${
-                      isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                      isDarkMode ? "text-gray-300" : "text-gray-700"
                     }`}
                   >
                     Hoạt động cuối
                   </th>
                   <th
                     className={`px-4 py-3 text-right text-sm font-semibold ${
-                      isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                      isDarkMode ? "text-gray-300" : "text-gray-700"
                     }`}
                   >
                     Hành động
@@ -344,7 +350,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
                     <td colSpan={5} className="px-4 py-8 text-center">
                       <p
                         className={
-                          isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                          isDarkMode ? "text-gray-400" : "text-gray-600"
                         }
                       >
                         Đang tải...
@@ -356,7 +362,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
                     <td colSpan={5} className="px-4 py-8 text-center">
                       <p
                         className={
-                          isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                          isDarkMode ? "text-gray-400" : "text-gray-600"
                         }
                       >
                         Không tìm thấy người dùng nào
@@ -368,8 +374,8 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
                     <tr
                       key={user.id}
                       className={`border-b ${
-                        isDarkMode ? 'border-gray-700' : 'border-gray-200'
-                      } hover:${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}
+                        isDarkMode ? "border-gray-700" : "border-gray-200"
+                      } hover:${isDarkMode ? "bg-gray-700" : "bg-gray-50"}`}
                     >
                       <td className="px-4 py-4">
                         <div className="flex items-center space-x-3">
@@ -382,7 +388,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
                           ) : (
                             <div
                               className={`w-10 h-10 rounded-full ${
-                                isDarkMode ? 'bg-gray-700' : 'bg-gray-300'
+                                isDarkMode ? "bg-gray-700" : "bg-gray-300"
                               } flex items-center justify-center`}
                             >
                               <span className="text-sm font-medium text-blue-500">
@@ -393,14 +399,14 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
                           <div>
                             <p
                               className={`font-medium ${
-                                isDarkMode ? 'text-white' : 'text-gray-900'
+                                isDarkMode ? "text-white" : "text-gray-900"
                               }`}
                             >
                               {user.display_name}
                             </p>
                             <p
                               className={`text-sm ${
-                                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                                isDarkMode ? "text-gray-400" : "text-gray-500"
                               }`}
                             >
                               @{user.username}
@@ -412,19 +418,19 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
                         <div className="flex items-center space-x-2">
                           <div
                             className={`w-2 h-2 rounded-full ${
-                              user.status === 'online'
-                                ? 'bg-green-500'
-                                : 'bg-gray-500'
+                              user.status === "online"
+                                ? "bg-green-500"
+                                : "bg-gray-500"
                             }`}
                           />
                           <span
                             className={`text-sm ${
-                              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                              isDarkMode ? "text-gray-300" : "text-gray-700"
                             } capitalize`}
                           >
-                            {user.status === 'online'
-                              ? 'Trực tuyến'
-                              : 'Ngoại tuyến'}
+                            {user.status === "online"
+                              ? "Trực tuyến"
+                              : "Ngoại tuyến"}
                           </span>
                           {user.is_disabled && (
                             <span className="px-2 py-1 text-xs bg-red-500/20 text-red-500 rounded">
@@ -440,19 +446,19 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
                       </td>
                       <td
                         className={`px-4 py-4 text-sm ${
-                          isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                          isDarkMode ? "text-gray-300" : "text-gray-700"
                         }`}
                       >
                         {formatDate(user.created_at)}
                       </td>
                       <td
                         className={`px-4 py-4 text-sm ${
-                          isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                          isDarkMode ? "text-gray-300" : "text-gray-700"
                         }`}
                       >
                         {user.last_seen_at
                           ? formatDate(user.last_seen_at)
-                          : 'Chưa xác định'}
+                          : "Chưa xác định"}
                       </td>
                       <td className="px-4 py-4 text-right">
                         <div className="flex justify-end items-center space-x-2">
@@ -463,10 +469,10 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
                               }
                               className={`p-2 rounded-lg transition-colors ${
                                 user.is_disabled
-                                  ? 'hover:bg-green-500/20 text-green-500'
-                                  : 'hover:bg-yellow-500/20 text-yellow-500'
+                                  ? "hover:bg-green-500/20 text-green-500"
+                                  : "hover:bg-yellow-500/20 text-yellow-500"
                               }`}
-                              title={user.is_disabled ? 'Mở khóa' : 'Khóa'}
+                              title={user.is_disabled ? "Mở khóa" : "Khóa"}
                             >
                               {user.is_disabled ? (
                                 <CheckCircle className="w-5 h-5" />
@@ -477,14 +483,17 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
                           )}
                           <button
                             onClick={() =>
-                              handleSoftDeleteUser(user.id, user.is_deleted || false)
+                              handleSoftDeleteUser(
+                                user.id,
+                                user.is_deleted || false
+                              )
                             }
                             className={`p-2 rounded-lg transition-colors ${
                               user.is_deleted
-                                ? 'hover:bg-green-500/20 text-green-500'
-                                : 'hover:bg-orange-500/20 text-orange-500'
+                                ? "hover:bg-green-500/20 text-green-500"
+                                : "hover:bg-orange-500/20 text-orange-500"
                             }`}
-                            title={user.is_deleted ? 'Khôi phục' : 'Xóa mềm'}
+                            title={user.is_deleted ? "Khôi phục" : "Xóa mềm"}
                           >
                             {user.is_deleted ? (
                               <CheckCircle className="w-5 h-5" />
@@ -518,18 +527,16 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
                 disabled={currentPage === 1}
                 className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
                   currentPage === 1
-                    ? 'opacity-50 cursor-not-allowed'
+                    ? "opacity-50 cursor-not-allowed"
                     : isDarkMode
-                    ? 'bg-gray-700 text-white hover:bg-gray-600'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? "bg-gray-700 text-white hover:bg-gray-600"
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                 }`}
               >
                 <ChevronLeft className="w-4 h-4" />
                 Trước
               </button>
-              <span
-                className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}
-              >
+              <span className={isDarkMode ? "text-gray-300" : "text-gray-700"}>
                 Trang {currentPage} / {Math.ceil(totalCount / ITEMS_PER_PAGE)}
               </span>
               <button
@@ -541,10 +548,10 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
                 disabled={currentPage >= Math.ceil(totalCount / ITEMS_PER_PAGE)}
                 className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
                   currentPage >= Math.ceil(totalCount / ITEMS_PER_PAGE)
-                    ? 'opacity-50 cursor-not-allowed'
+                    ? "opacity-50 cursor-not-allowed"
                     : isDarkMode
-                    ? 'bg-gray-700 text-white hover:bg-gray-600'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? "bg-gray-700 text-white hover:bg-gray-600"
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                 }`}
               >
                 Sau
@@ -561,8 +568,8 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
         onClose={() =>
           setConfirmModal({
             isOpen: false,
-            title: '',
-            message: '',
+            title: "",
+            message: "",
             onConfirm: null,
           })
         }
@@ -572,15 +579,15 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
           }
           setConfirmModal({
             isOpen: false,
-            title: '',
-            message: '',
+            title: "",
+            message: "",
             onConfirm: null,
           });
         }}
         title={confirmModal.title}
         message={confirmModal.message}
-        confirmText={confirmModal.confirmText || 'Xác nhận'}
-        variant={confirmModal.variant || 'default'}
+        confirmText={confirmModal.confirmText || "Xác nhận"}
+        variant={confirmModal.variant || "default"}
         isDarkMode={isDarkMode}
       />
 
@@ -590,24 +597,23 @@ export const UsersTab: React.FC<UsersTabProps> = ({ isDarkMode }) => {
         onClose={() =>
           setAlertModal({
             isOpen: false,
-            title: '',
-            message: '',
+            title: "",
+            message: "",
           })
         }
         onConfirm={() =>
           setAlertModal({
             isOpen: false,
-            title: '',
-            message: '',
+            title: "",
+            message: "",
           })
         }
         title={alertModal.title}
         message={alertModal.message}
         confirmText="Đóng"
-        variant={alertModal.variant || 'default'}
+        variant={alertModal.variant || "default"}
         isDarkMode={isDarkMode}
       />
     </div>
   );
 };
-

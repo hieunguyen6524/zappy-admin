@@ -4,8 +4,8 @@ import { login } from "@/services/auth";
 type Props = { onSuccess: () => void };
 
 const Login: React.FC<Props> = ({ onSuccess }) => {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("admin@zappy.com");
+  const [password, setPassword] = useState("Test@123");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,7 +26,9 @@ const Login: React.FC<Props> = ({ onSuccess }) => {
   return (
     <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
       <div className="w-full max-w-md bg-gray-800 border border-gray-700 rounded-xl p-8 shadow-xl">
-        <h2 className="text-white text-2xl font-bold mb-6 text-center">Đăng nhập quản trị</h2>
+        <h2 className="text-white text-2xl font-bold mb-6 text-center">
+          Đăng nhập quản trị
+        </h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm text-gray-300 mb-2">Email</label>
@@ -65,5 +67,3 @@ const Login: React.FC<Props> = ({ onSuccess }) => {
 };
 
 export default Login;
-
-
