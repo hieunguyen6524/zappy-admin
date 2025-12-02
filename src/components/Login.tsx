@@ -4,8 +4,8 @@ import { login } from "@/services/auth";
 type Props = { onSuccess: () => void };
 
 const Login: React.FC<Props> = ({ onSuccess }) => {
-  const [email, setEmail] = useState("admin@zappy.com");
-  const [password, setPassword] = useState("Test@123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
